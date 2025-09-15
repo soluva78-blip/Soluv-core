@@ -1,0 +1,17 @@
+{
+  "extends": "@soluva/typescript-config/base.json",
+  "compilerOptions": {
+    "baseUrl": "src",
+    "jsx": "react",
+    "outDir": "dist",
+    "tsBuildInfoFile": "tsconfig.tsbuildinfo",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["src", "tests"],
+  "exclude": ["dist", "build", "node_modules"],
+  "ts-node": {
+    "swc": true
+  }
+}

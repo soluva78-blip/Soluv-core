@@ -1,5 +1,5 @@
 {
-  "name": "queue-service",
+  "name": "test",
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
@@ -11,14 +11,12 @@
     "lint": "eslint . --quiet"
   },
   "dependencies": {
-    "axios": "^1.12.2",
     "bullmq": "^4.15.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "helmet": "^7.1.0",
     "ioredis": "^5.3.2",
     "joi": "^17.13.3",
-    "mongoose": "^8.18.1",
     "rss-parser": "^3.13.0",
     "snoowrap": "^1.23.0",
     "winston": "^3.11.0"
@@ -26,7 +24,6 @@
   "devDependencies": {
     "@soluva/eslint-config": "workspace:*",
     "@soluva/typescript-config": "workspace:*",
-    "@soluva/types": "workspace:*",
     "@swc/core": "^1.13.5",
     "@swc/helpers": "^0.5.17",
     "@types/cors": "^2.8.17",

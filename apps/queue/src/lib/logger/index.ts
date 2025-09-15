@@ -1,6 +1,7 @@
-import { Logger } from "winston";
-import { config } from "../../config/config";
-import { buildDevLogger, prodDevLogger } from "./loggings";
+import { config } from "@/config";
+import { AppLogger, buildDevLogger, prodDevLogger } from "./loggings";
 
-export const logger: Logger =
+const baseLogger =
   config.appEnvironment === "production" ? prodDevLogger() : buildDevLogger();
+
+export const logger = new AppLogger(baseLogger, "reddit-collector");

@@ -18,6 +18,88 @@ importers:
         specifier: 5.9.2
         version: 5.9.2
 
+  apps/ai-agents/queue:
+    dependencies:
+      bullmq:
+        specifier: ^4.15.0
+        version: 4.18.3
+      cors:
+        specifier: ^2.8.5
+        version: 2.8.5
+      express:
+        specifier: ^4.18.2
+        version: 4.21.2
+      helmet:
+        specifier: ^7.1.0
+        version: 7.2.0
+      ioredis:
+        specifier: ^5.3.2
+        version: 5.7.0
+      joi:
+        specifier: ^17.13.3
+        version: 17.13.3
+      rss-parser:
+        specifier: ^3.13.0
+        version: 3.13.0
+      snoowrap:
+        specifier: ^1.23.0
+        version: 1.23.0
+      winston:
+        specifier: ^3.11.0
+        version: 3.17.0
+    devDependencies:
+      '@soluva/eslint-config':
+        specifier: workspace:*
+        version: link:../../../packages/eslint-config
+      '@soluva/typescript-config':
+        specifier: workspace:*
+        version: link:../../../packages/typescript-config
+      '@swc/core':
+        specifier: ^1.13.5
+        version: 1.13.5(@swc/helpers@0.5.17)
+      '@swc/helpers':
+        specifier: ^0.5.17
+        version: 0.5.17
+      '@types/cors':
+        specifier: ^2.8.17
+        version: 2.8.19
+      '@types/express':
+        specifier: ^4.17.21
+        version: 4.17.23
+      '@types/jest':
+        specifier: ^30.0.0
+        version: 30.0.0
+      '@types/node':
+        specifier: ^20.10.0
+        version: 20.19.14
+      '@types/snoowrap':
+        specifier: ^1.16.1
+        version: 1.19.0
+      dotenv:
+        specifier: ^16.3.1
+        version: 16.6.1
+      eslint:
+        specifier: ^9.34.0
+        version: 9.34.0
+      jest:
+        specifier: ^30.1.3
+        version: 30.1.3(@types/node@20.19.14)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.14)(typescript@5.9.2))
+      ts-jest:
+        specifier: ^29.4.1
+        version: 29.4.1(@babel/core@7.28.4)(@jest/transform@30.1.2)(@jest/types@30.0.5)(babel-jest@30.1.2(@babel/core@7.28.4))(esbuild@0.17.19)(jest-util@30.0.5)(jest@30.1.3(@types/node@20.19.14)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.14)(typescript@5.9.2)))(typescript@5.9.2)
+      ts-node-dev:
+        specifier: ^2.0.0
+        version: 2.0.0(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.14)(typescript@5.9.2)
+      tsconfig-paths:
+        specifier: ^4.2.0
+        version: 4.2.0
+      tsup:
+        specifier: 6.6.3
+        version: 6.6.3(@swc/core@1.13.5(@swc/helpers@0.5.17))(postcss@8.4.31)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.14)(typescript@5.9.2))(typescript@5.9.2)
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+
   apps/collectors/reddit:
     dependencies:
       bottleneck:
@@ -154,6 +236,9 @@ importers:
 
   apps/queue:
     dependencies:
+      axios:
+        specifier: ^1.12.2
+        version: 1.12.2
       bullmq:
         specifier: ^4.15.0
         version: 4.18.3
@@ -172,6 +257,9 @@ importers:
       joi:
         specifier: ^17.13.3
         version: 17.13.3
+      mongoose:
+        specifier: ^8.18.1
+        version: 8.18.1
       rss-parser:
         specifier: ^3.13.0
         version: 3.13.0
@@ -185,6 +273,9 @@ importers:
       '@soluva/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
+      '@soluva/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@soluva/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
@@ -221,82 +312,6 @@ importers:
       ts-jest:
         specifier: ^29.4.1
         version: 29.4.1(@babel/core@7.28.4)(@jest/transform@30.1.2)(@jest/types@30.0.5)(babel-jest@30.1.2(@babel/core@7.28.4))(esbuild@0.17.19)(jest-util@30.0.5)(jest@30.1.3(@types/node@20.19.14)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.14)(typescript@5.9.2)))(typescript@5.9.2)
-      ts-node-dev:
-        specifier: ^2.0.0
-        version: 2.0.0(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.14)(typescript@5.9.2)
-      tsconfig-paths:
-        specifier: ^4.2.0
-        version: 4.2.0
-      tsup:
-        specifier: 6.6.3
-        version: 6.6.3(@swc/core@1.13.5(@swc/helpers@0.5.17))(postcss@8.4.31)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.14)(typescript@5.9.2))(typescript@5.9.2)
-      typescript:
-        specifier: 5.9.2
-        version: 5.9.2
-
-  apps/reddit:
-    dependencies:
-      bullmq:
-        specifier: ^4.15.0
-        version: 4.18.3
-      cors:
-        specifier: ^2.8.5
-        version: 2.8.5
-      express:
-        specifier: ^4.18.2
-        version: 4.21.2
-      helmet:
-        specifier: ^7.1.0
-        version: 7.2.0
-      ioredis:
-        specifier: ^5.3.2
-        version: 5.7.0
-      joi:
-        specifier: ^17.13.3
-        version: 17.13.3
-      rss-parser:
-        specifier: ^3.13.0
-        version: 3.13.0
-      snoowrap:
-        specifier: ^1.23.0
-        version: 1.23.0
-      winston:
-        specifier: ^3.11.0
-        version: 3.17.0
-    devDependencies:
-      '@soluva/eslint-config':
-        specifier: workspace:*
-        version: link:../../packages/eslint-config
-      '@soluva/typescript-config':
-        specifier: workspace:*
-        version: link:../../packages/typescript-config
-      '@swc/core':
-        specifier: ^1.13.5
-        version: 1.13.5(@swc/helpers@0.5.17)
-      '@swc/helpers':
-        specifier: ^0.5.17
-        version: 0.5.17
-      '@types/cors':
-        specifier: ^2.8.17
-        version: 2.8.19
-      '@types/express':
-        specifier: ^4.17.21
-        version: 4.17.23
-      '@types/node':
-        specifier: ^20.10.0
-        version: 20.19.14
-      '@types/snoowrap':
-        specifier: ^1.16.1
-        version: 1.19.0
-      dotenv:
-        specifier: ^16.3.1
-        version: 16.6.1
-      eslint:
-        specifier: ^9.34.0
-        version: 9.34.0
-      jest:
-        specifier: ^30.1.3
-        version: 30.1.3(@types/node@20.19.14)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.14)(typescript@5.9.2))
       ts-node-dev:
         specifier: ^2.0.0
         version: 2.0.0(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@20.19.14)(typescript@5.9.2)
@@ -1631,6 +1646,9 @@ packages:
   aws4@1.13.2:
     resolution: {integrity: sha512-lHe62zvbTB5eEABUVi/AwVh0ZKY9rMMDhmm+eeyuuUQbQ3+J+fONVQOZyj+DdrvD4BY33uYniyRJ4UJIaSKAfw==}
 
+  axios@1.12.2:
+    resolution: {integrity: sha512-vMJzPewAlRyOgxV2dU0Cuz2O8zzzx9VYtbJOaBgXFeLc4IV/Eg50n4LowmehOOR61S8ZMpc2K5Sa7g6A4jfkUw==}
+
   b4a@1.7.1:
     resolution: {integrity: sha512-ZovbrBV0g6JxK5cGUF1Suby1vLfKjv4RWi8IxoaO/Mon8BDD9I21RxjHFtgQ+kskJqLAVyQZly3uMBui+vhc8Q==}
     peerDependencies:
@@ -2275,6 +2293,10 @@ packages:
   form-data@2.3.3:
     resolution: {integrity: sha512-1lLKB2Mu3aGP1Q/2eCOx0fNbRMe7XdwktwOruhfqqd0rIJWwN4Dh+E3hrPSlDCXnSR7UtZ1N38rVXm+6+MEhJQ==}
     engines: {node: '>= 0.12'}
+
+  form-data@4.0.4:
+    resolution: {integrity: sha512-KrGhL9Q4zjj0kiUt5OO4Mr/A/jlI2jDYs5eHBpYHPcBEVSiipAvn2Ko2HnPe20rmcuuvMHNdZFp+4IlGTMF0Ow==}
+    engines: {node: '>= 6'}
 
   forwarded@0.2.0:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
@@ -3320,6 +3342,9 @@ packages:
   proxy-addr@2.0.7:
     resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
     engines: {node: '>= 0.10'}
+
+  proxy-from-env@1.1.0:
+    resolution: {integrity: sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg==}
 
   psl@1.15.0:
     resolution: {integrity: sha512-JZd3gMVBAVQkSs6HdNZo9Sdo0LNcQeMNP3CozBJb3JYC/QUYZTnKxP+f8oWRX4rHP5EurWxqAHTSwUCjlNKa1w==}
@@ -5376,6 +5401,14 @@ snapshots:
 
   aws4@1.13.2: {}
 
+  axios@1.12.2:
+    dependencies:
+      follow-redirects: 1.15.11(debug@4.4.1)
+      form-data: 4.0.4
+      proxy-from-env: 1.1.0
+    transitivePeerDependencies:
+      - debug
+
   b4a@1.7.1: {}
 
   babel-jest@30.1.2(@babel/core@7.28.4):
@@ -6184,6 +6217,14 @@ snapshots:
     dependencies:
       asynckit: 0.4.0
       combined-stream: 1.0.8
+      mime-types: 2.1.35
+
+  form-data@4.0.4:
+    dependencies:
+      asynckit: 0.4.0
+      combined-stream: 1.0.8
+      es-set-tostringtag: 2.1.0
+      hasown: 2.0.2
       mime-types: 2.1.35
 
   forwarded@0.2.0: {}
@@ -7462,6 +7503,8 @@ snapshots:
     dependencies:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
+
+  proxy-from-env@1.1.0: {}
 
   psl@1.15.0:
     dependencies:
