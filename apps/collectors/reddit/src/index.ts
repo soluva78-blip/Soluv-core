@@ -6,11 +6,11 @@ import connectDB from "./config/db";
 import { logger } from "./lib/logger";
 import { redisClient } from "./lib/redisClient";
 import { scheduleSubredditFetch } from "./lib/scheduler";
-import { main } from "./main";
+import { streamNewPosts } from "./main";
 
 dotenv.config();
 
-export const fetchWorker = new Worker(config.queue.name, main, {
+export const fetchWorker = new Worker(config.queue.name, streamNewPosts, {
   connection: redisClient,
 });
 

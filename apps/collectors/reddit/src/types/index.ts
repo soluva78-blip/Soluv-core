@@ -1,5 +1,6 @@
 export interface RawRedditPost {
   id: string;
+  name: string;
   title: string;
   selftext?: string;
   author: string;

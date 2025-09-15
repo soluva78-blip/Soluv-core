@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import { RawRedditPost, RedditPost, RedditRssItem } from "@/types";
 import { deduplicatePosts } from "@/utils/deduplication";
 import { convertToRedditPost, mapSubmissionToRawPost } from "@/utils/mappers";
+import Bottleneck from "bottleneck";
 import Parser from "rss-parser";
 import * as Snoowrap from "snoowrap";
 import { ProblemKeywordFilter } from "../filters/problemKeywordFilter";
@@ -10,6 +11,36 @@ export class RedditService {
   constructor(private readonly client: Snoowrap) {}
   private parser = new Parser<object, RedditRssItem>();
 
+  private rssLimiter = new Bottleneck({
+    minTime: 5000, // 1 request every 5s
+    maxConcurrent: 1,
+  });
+
+  async *fetchNewPostsStream(
+    subreddit: string,
+    batchSize = 50
+  ): AsyncGenerator<RedditPost[]> {
+    let after: string | undefined;
+    let hasMore = true;
+
+    while (hasMore) {
+      const submissions = await this.fetchNewPostsFromSubreddit(
+        subreddit,
+        batchSize,
+        after
+      );
+
+      if (submissions.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      yield submissions.map(convertToRedditPost);
+
+      after = submissions[submissions.length - 1]?.name;
+    }
+  }
+
   /**
    * Fetches and processes Reddit posts from multiple subreddits based on a search query
    * @param subreddits - Array of subreddit names to fetch posts from
@@ -17,14 +48,26 @@ export class RedditService {
    * @returns Promise resolving to an array of processed and deduplicated RedditPost objects
    */
   async run(subreddits: string[], query: string): Promise<RedditPost[]> {
-    const allPostsPromises = subreddits.map(async (subreddit) => {
-      logger.info(`Fetching for r/${subreddit}`);
+    const cycle = Math.floor(Date.now() / (1000 * 60)) % 3;
+    // rotates every minute: 0 = search+new, 1 = rss, 2 = search+new
 
-      const [searchPostsRaw, oauthPostsRaw, rssPosts] = await Promise.all([
-        this.fetchPostsBySearch(subreddit, query),
-        this.fetchNewPostsFromSubreddit(subreddit),
-        this.fetchRedditPostViaRssFeed(subreddit),
-      ]);
+    const allPostsPromises = subreddits.map(async (subreddit) => {
+      logger.info(`Fetching for r/${subreddit}, cycle=${cycle}`);
+
+      let searchPostsRaw: RawRedditPost[] = [];
+      let oauthPostsRaw: RawRedditPost[] = [];
+      let rssPosts: RedditPost[] = [];
+
+      if (cycle !== 1) {
+        searchPostsRaw = await this.fetchPostsBySearch(subreddit, query);
+        oauthPostsRaw = await this.fetchNewPostsFromSubreddit(subreddit, 25);
+      }
+
+      if (cycle === 1) {
+        rssPosts = await this.rssLimiter.schedule(() =>
+          this.fetchRedditPostViaRssFeed(subreddit)
+        );
+      }
 
       const searchPosts = searchPostsRaw.map(convertToRedditPost);
       const oauthPosts = oauthPostsRaw.map(convertToRedditPost);
@@ -63,11 +106,12 @@ export class RedditService {
    */
   async fetchNewPostsFromSubreddit(
     subreddit: string,
-    limit = 500
+    limit = 500,
+    after?: string
   ): Promise<RawRedditPost[]> {
     const submissions = await this.client
       .getSubreddit(subreddit)
-      .getNew({ limit });
+      .getNew({ limit, after });
 
     return submissions.map(mapSubmissionToRawPost);
   }

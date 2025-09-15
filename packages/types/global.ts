@@ -31,5 +31,6 @@ export interface SoluvaPost {
   /**
    * Metadata about the post, including processing details.
    */
+  processed: boolean;
   metadata: Record<any, any>;
 }

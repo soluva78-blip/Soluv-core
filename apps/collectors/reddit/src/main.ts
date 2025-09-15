@@ -73,13 +73,48 @@ const main = async (job: Job) => {
       if (isNew) unseenPosts.push(post);
     }
 
-    // Insert only unseen ones
-    if (unseenPosts.length > 0) {
-      await Post.insertMany(unseenPosts, { ordered: false });
+    for (let i = 0; i < unseenPosts.length; i += 50) {
+      await Post.insertMany(unseenPosts.slice(i, i + 50), { ordered: false });
     }
 
     return { subreddit, fetched: posts.length, stored: unseenPosts.length };
   });
 };
 
-export { main };
+const streamNewPosts = async (job: Job) => {
+  const { subreddit } = job.data as { subreddit: string; query: string };
+
+  return limiter.schedule(async () => {
+    let storedTotal = 0;
+    let fetchedTotal = 0;
+
+    for await (const batch of redditService.fetchNewPostsStream(
+      subreddit,
+      50
+    )) {
+      fetchedTotal += batch.length;
+
+      const freshPosts = await filterNewPosts(subreddit, batch);
+      const newPosts = freshPosts.map(convertToSoluvaPost);
+
+      const seenKey = "seen_posts";
+      const unseenPosts = [];
+
+      for (const post of newPosts) {
+        const isNew = await redisClient.sadd(seenKey, post?.id!);
+        if (isNew) unseenPosts.push(post);
+      }
+
+      if (unseenPosts.length > 0) {
+        await Post.insertMany(unseenPosts, { ordered: false });
+        storedTotal += unseenPosts.length;
+      }
+    }
+
+    await redisClient.incrby(THROUGHPUT_KEY, fetchedTotal);
+
+    return { subreddit, fetched: fetchedTotal, stored: storedTotal };
+  });
+};
+
+export { main, streamNewPosts };

@@ -16,6 +16,7 @@ export const convertToSoluvaPost = (rawPost: RedditPost): SoluvaPost => {
     author: rawPost.author,
     score: rawPost.score,
     url: rawPost.url,
+    processed: false,
     metadata: {
       fetchedAt: Date.now(),
       processingVersion: "1.0.0",
@@ -72,6 +73,7 @@ export const mapSubmissionToRawPost = (
 ): RawRedditPost => {
   return {
     id: submission.id,
+    name: submission.name,
     title: submission.title,
     selftext: submission.selftext || "",
     author: submission.author.name,
