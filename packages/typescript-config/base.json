@@ -13,7 +13,10 @@
     "noUncheckedIndexedAccess": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "strict": true,
     "target": "ES2022"
-  }
+  },
+  "include": ["src"],
+  "exclude": ["./dist", "./build", "./node_modules"]
 }
