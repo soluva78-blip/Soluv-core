@@ -1,4 +1,11 @@
 export type SoluvaMediumTypes = "reddit" | "medium" | "quora";
+
+export enum SoluvaMediumEnum {
+  REDDIT = "reddit",
+  TWITTER = "twitter",
+  GITHUB = "github",
+  DISCORD = "discord",
+}
 /**
  * Structure representing a validated Reddit post.
  */

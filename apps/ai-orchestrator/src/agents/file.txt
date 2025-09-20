@@ -1,0 +1,616 @@
+ystem: You are a senior TypeScript backend engineer. Produce a complete implementation (files + short README) that implements an AI Orchestrator service for Soluva. Use Node.js + TypeScript. Use BullMQ for queueing, supabase for Postgres access, and langgraph (LangGraph) + LangChain for agent orchestration. Use pgvector (vector extension) in supbase to store embeddings.
+
+Project goals:
+
+- Worker consumes post IDs from BullMQ queue "orchestrator".
+
+- For each post, run an orchestrator graph with nodes:
+
+  1) validity check (is this a usable problem?)
+
+  2) problem classification (single label)
+
+  3) semantic analysis -> summary + embedding
+
+  4) sentiment analysis -> sentiment_score
+
+  5) category assignment (create category row on-the-fly if missing)
+
+  6) cluster assignment (nearest centroid using pgvector; create cluster if none close)
+
+  7) record mention (insert to mentions table for trend calculations)
+
+  8) Cost controls / rate limiting for LLM calls.
+
+  9) Audit trail (what agent wrote what, timestamps).
+
+  10) Embeddings storage (pgvector) for clustering / similarity.
+
+  11) Batch & incremental re-clustering (assign on ingest, re-cluster nightly).
+
+  12) Idempotency & locking (avoid processing same post twice).
+
+  13) Observability & metrics (jobs processed, errors, token usage, latencies).
+
+  14) Spam / PII filter (remove posts with personal data or policy violations).
+
+- Each node MUST persist partial results to Postgres immediately (update posts table).
+
+- After full pipeline, mark post processed and processed_at.
+
+- Clustering: use pgvector similarity (ORDER BY centroid <-> $1), threshold to decide assignment. Update cluster centroid with incremental average.
+
+- Trend detection: provide script to aggregate mentions per cluster into trends table with a trend_score (growth ratio / z-score).
+
+- Provide robust error handling, idempotency (processing flag), and backoff retries on LLM calls.
+
+- Provide a scripts/init_db.sql file (DDL) to create tables and pgvector extension.
+
+- Provide .env.example with required vars: DATABASE_URL, REDIS_URL, OPENAI_API_KEY, ORCH_CONCURRENCY.
+
+- Provide unit tests for PostsRepository and for the orchestrator graph flow (mocking agent outputs).
+
+- Provide a README with run instructions.
+
+Constraints:
+
+- Use TypeScript with ES modules.
+
+- Avoid heavy frameworks; keep code dependency minimal and readable.
+
+- Do not implement the actual LangChain chains for agents — instead provide clear placeholders and wrapper functions with comments where to plug LangChain code.
+
+- Expose configuration values via env variables.
+
+- Provide code examples for batching, concurrency, and how to run the worker locally.
+
+Return: a file list and full content for each file in the repository (TypeScript code, SQL DDL, package.json snippet, README). Keep explanations short; focus on runnable code.
+
+this is the kind of data the orchestrator would receive
+
+import { SoluvaMediumTypes } from "@soluva/types/global"; import { Document, Schema, model } from "mongoose";  interface DetailedScoreBreakdown {   keywordScore: number;   contextScore: number;   engagementScore: number;   authorityScore: number;   freshnessScore: number;   total: number; }  interface Metadata {   relevanceScore: number;   detailedScoreBreakdown: DetailedScoreBreakdown; }  export interface IPost extends Document {   id: string | number;   type: SoluvaMediumTypes;   title: string;   body: string;   author: string;   score: number;   url: string;   metadata: Metadata;   status: "unprocessed" | 'processed'; }  const detailedScoreBreakdownSchema = new Schema<DetailedScoreBreakdown>(   {     keywordScore: { type: Number, default: 0 },     contextScore: { type: Number, default: 0 },     engagementScore: { type: Number, default: 0 },     authorityScore: { type: Number, default: 0 },     freshnessScore: { type: Number, default: 0 },     total: { type: Number, default: 0 },   },   { _id: false } );  const metadataSchema = new Schema<Metadata>(   {     relevanceScore: { type: Number, default: 0 },     detailedScoreBreakdown: {       type: detailedScoreBreakdownSchema,       required: true,     },   },   { _id: false } );  const postSchema = new Schema<IPost>(   {     title: { type: String, required: true },     body: { type: String, required: true },     author: { type: String, required: true },     score: { type: Number, default: 0 },     url: { type: String, required: true },     metadata: { type: metadataSchema, required: true },   },   { timestamps: true } );  export const Post = model<IPost>("Post", postSchema, "posts"); similar example data
+
+{"id":"1ngg5or","title":"Are you solving a problem? Where do I find startups/projects to collaborate with? [I will not promote]","body":"Professionally, I am a Business Analyst (entry-level, unemployed) based in Toronto with working knowledge of SQL, Salesforce CRM (certified) and currently studying for Agentforce.\n\nI want to work with like-minded people who are trying to solve a problem maybe in a form of a startup or small projects so I could contribute, learn, and hopefully build a customer centric, problem-solving mindset along the way. I believe an unfamiliar situation is what will push my mind to ask right questions to solve a problem on my own and most importantly, polish up my skills.  \n\nI’ve tried platforms like Wellfound and have been reaching out to people on LinkedIn and ofcourse, networking events as well! but I haven’t had much success yet. I wonder if I am doing something wrong. \n\n\\- Is there anyone searching for a Business Analyst? \n\n\\- Where/how do I reach out to such people/startups? \n\n\\- Is there any other way to set foot on the door and be a part of solving real challenges? ","author":{"name":"MostStorage8989"},"score":7,"numComments":6,"subreddit":{"display_name":"startups"},"permalink":"/r/startups/comments/1ngg5or/are_you_solving_a_problem_where_do_i_find/","createdUtc":1757818635,"url":"https://www.reddit.com/r/startups/comments/1ngg5or/are_you_solving_a_problem_where_do_i_find/","isNsfw":false,"metadata":{"fetchedAt":1757892246886,"processingVersion":"1.0.0","relevanceScore":0,"detailedScoreBreakdown":{"keywordScore":0,"contextScore":0,"engagementScore":0,"authorityScore":0,"freshnessScore":0,"total":0}}}
+
+
+This is my current structure
+soluva-orchestrator/
+├── src/
+│   ├── config/
+│   │   ├── database.ts
+│   │   ├── redis.ts
+│   │   └── env.ts
+│   ├── repositories/
+│   │   ├── posts.repository.ts
+│   │   ├── categories.repository.ts
+│   │   ├── clusters.repository.ts
+│   │   └── mentions.repository.ts
+│   ├── services/
+│   │   ├── orchestrator.service.ts
+│   │   ├── clustering.service.ts
+│   │   └── trends.service.ts
+│   ├── agents/
+│   │   ├── validity.agent.ts
+│   │   ├── classification.agent.ts
+│   │   ├── semantic.agent.ts
+│   │   ├── sentiment.agent.ts
+│   │   ├── category.agent.ts
+│   │   ├── cluster.agent.ts
+│   │   └── spam.agent.ts
+│   ├── queues/
+│   │   └── orchestrator.queue.ts
+│   ├── utils/
+│   │   ├── llm.ts
+│   │   ├── embeddings.ts
+│   │   └── metrics.ts
+│   ├── types/
+│   │   └── index.ts
+│   └── worker.ts
+├── scripts/
+│   ├── init_db.sql
+│   ├── recompute-clusters.ts
+│   └── calculate-trends.ts
+├── tests/
+│   ├── repositories/
+│   │   └── posts.repository.test.ts
+│   └── services/
+│       └── orchestrator.service.test.ts
+├── .env.example
+├── package.json
+├── tsconfig.json
+├── jest.config.js
+└── README.md
+
+This is my DATABASE_URL-- Enable pgvector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Enum types
+CREATE TYPE post_status AS ENUM ('unprocessed', 'processing', 'processed', 'failed');
+CREATE TYPE post_classification AS ENUM ('bug', 'feature_request', 'question', 'discussion', 'documentation', 'other');
+CREATE TYPE sentiment_label AS ENUM ('positive', 'neutral', 'negative');
+
+-- Posts table
+CREATE TABLE IF NOT EXISTS posts (
+    id VARCHAR(255) PRIMARY KEY,
+    type VARCHAR(50) NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    author VARCHAR(255) NOT NULL,
+    score NUMERIC DEFAULT 0,
+    url TEXT NOT NULL,
+    
+    -- Processing status
+    status post_status DEFAULT 'unprocessed',
+    processing_started_at TIMESTAMP,
+    processed_at TIMESTAMP,
+    failed_at TIMESTAMP,
+    error_message TEXT,
+    retry_count INTEGER DEFAULT 0,
+    
+    -- Validity check results
+    is_valid BOOLEAN,
+    validity_reason TEXT,
+    
+    -- Classification results
+    classification post_classification,
+    classification_confidence NUMERIC,
+    
+    -- Semantic analysis results
+    summary TEXT,
+    embedding vector(1536),
+    keywords TEXT[],
+    
+    -- Sentiment analysis results
+    sentiment_label sentiment_label,
+    sentiment_score NUMERIC,
+    
+    -- Category assignment
+    category_id INTEGER,
+    
+    -- Cluster assignment
+    cluster_id INTEGER,
+    
+    -- Spam/PII detection
+    is_spam BOOLEAN DEFAULT FALSE,
+    has_pii BOOLEAN DEFAULT FALSE,
+    moderation_notes TEXT,
+    
+    -- Metadata
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Categories table
+CREATE TABLE IF NOT EXISTS categories (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    description TEXT,
+    parent_id INTEGER REFERENCES categories(id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Clusters table
+CREATE TABLE IF NOT EXISTS clusters (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255),
+    centroid vector(1536) NOT NULL,
+    member_count INTEGER DEFAULT 0,
+    category_id INTEGER REFERENCES categories(id),
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    last_recomputed_at TIMESTAMP
+);
+
+-- Mentions table for trend tracking
+CREATE TABLE IF NOT EXISTS mentions (
+    id SERIAL PRIMARY KEY,
+    post_id VARCHAR(255) REFERENCES posts(id),
+    cluster_id INTEGER REFERENCES clusters(id),
+    category_id INTEGER REFERENCES categories(id),
+    mentioned_at TIMESTAMP DEFAULT NOW(),
+    sentiment_score NUMERIC,
+    engagement_score NUMERIC
+);
+
+-- Trends table
+CREATE TABLE IF NOT EXISTS trends (
+    id SERIAL PRIMARY KEY,
+    cluster_id INTEGER REFERENCES clusters(id),
+    category_id INTEGER REFERENCES categories(id),
+    period_start TIMESTAMP NOT NULL,
+    period_end TIMESTAMP NOT NULL,
+    mention_count INTEGER DEFAULT 0,
+    growth_rate NUMERIC,
+    trend_score NUMERIC,
+    avg_sentiment NUMERIC,
+    metadata JSONB DEFAULT '{}',
+    calculated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(cluster_id, period_start, period_end)
+);
+
+-- Audit log table
+CREATE TABLE IF NOT EXISTS audit_log (
+    id SERIAL PRIMARY KEY,
+    post_id VARCHAR(255),
+    agent_name VARCHAR(100),
+    action VARCHAR(100),
+    input JSONB,
+    output JSONB,
+    tokens_used INTEGER,
+    latency_ms INTEGER,
+    error TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indices for performance
+CREATE INDEX idx_posts_status ON posts(status);
+CREATE INDEX idx_posts_processed_at ON posts(processed_at);
+CREATE INDEX idx_posts_embedding ON posts USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX idx_posts_category ON posts(category_id);
+CREATE INDEX idx_posts_cluster ON posts(cluster_id);
+
+CREATE INDEX idx_clusters_centroid ON clusters USING ivfflat (centroid vector_cosine_ops);
+CREATE INDEX idx_clusters_category ON clusters(category_id);
+
+CREATE INDEX idx_mentions_cluster ON mentions(cluster_id);
+CREATE INDEX idx_mentions_category ON mentions(category_id);
+CREATE INDEX idx_mentions_time ON mentions(mentioned_at);
+
+CREATE INDEX idx_trends_cluster ON trends(cluster_id);
+CREATE INDEX idx_trends_period ON trends(period_start, period_end);
+
+CREATE INDEX idx_audit_post ON audit_log(post_id);
+CREATE INDEX idx_audit_agent ON audit_log(agent_name);
+CREATE INDEX idx_audit_created ON audit_log(created_at);
+
+
+import * as dotenv from "dotenv";
+import * as Joi from "joi";
+
+dotenv.config();
+type INodeEnv = "development" | "production" | "staging";
+
+// Define validation schema for environment variables
+const envSchema = Joi.object()
+  .keys({
+    NODE_ENV: Joi.string()
+      .valid("development", "production", "staging")
+      .required(),
+    PORT: Joi.number().required(),
+
+    // Supabase
+    SUPABASE_URL: Joi.string().required(),
+    SUPABASE_KEY: Joi.string().required(),
+
+    // Redis
+    REDIS_HOST: Joi.string().required(),
+    REDIS_PORT: Joi.string().required(),
+    REDIS_TTL: Joi.string().custom((value) => Number(value)).default("3600"),
+
+    // OpenAI
+    OPENAI_API_KEY: Joi.string().min(1),
+    OPENAI_MODEL: Joi.string().default("gpt-4-turbo-preview"),
+    EMBEDDING_MODEL: Joi.string().default("text-embedding-ada-002"),
+
+    // Orchestration & Processing
+    ORCH_CONCURRENCY: Joi.number().default(5),
+    BATCH_SIZE: Joi.number().default(10),
+    RATE_LIMIT_PER_MINUTE: Joi.number().default(60),
+    CLUSTER_SIMILARITY_THRESHOLD: Joi.number().default(0.7),
+    CENTROID_UPDATE_BATCH_SIZE: Joi.number().default(100),
+    RETRY_ATTEMPTS: Joi.number().default(3),
+    RETRY_DELAY_MS: Joi.number().default(1000),
+
+    // Limits
+    MAX_TOKENS_PER_MINUTE: Joi.number().default(100000),
+    MAX_REQUESTS_PER_MINUTE: Joi.number().default(100),
+    MIN_CLUSTER_SIZE: Joi.number().default(5),
+
+    // Monitoring
+    METRICS_PORT: Joi.number().default(9090),
+  })
+  .unknown();
+
+// Validate environment variables against the schema
+const { value: validatedEnvVars, error: validationError } = envSchema
+  .prefs({ errors: { label: "key" } })
+  .validate(process.env);
+
+if (validationError) {
+  throw new Error(`Config validation error: ${validationError.message}`);
+}
+
+export const config = Object.freeze({
+  app: {
+    environment: validatedEnvVars.NODE_ENV as INodeEnv,
+    port: validatedEnvVars.PORT,
+  },
+
+  supabase: {
+    url: validatedEnvVars.SUPABASE_URL,
+    key: validatedEnvVars.SUPABASE_KEY,
+  },
+
+  cache: {
+    host: validatedEnvVars.REDIS_HOST,
+    port: parseInt(validatedEnvVars.REDIS_PORT!),
+    ttl: validatedEnvVars.REDIS_TTL,
+  },
+
+  openai: {
+    apiKey: validatedEnvVars.OPENAI_API_KEY,
+    model: validatedEnvVars.OPENAI_MODEL,
+    embeddingModel: validatedEnvVars.EMBEDDING_MODEL,
+  },
+
+  orchestration: {
+    concurrency: validatedEnvVars.ORCH_CONCURRENCY,
+    batchSize: validatedEnvVars.BATCH_SIZE,
+    rateLimitPerMinute: validatedEnvVars.RATE_LIMIT_PER_MINUTE,
+    clusterSimilarityThreshold: validatedEnvVars.CLUSTER_SIMILARITY_THRESHOLD,
+    centroidUpdateBatchSize: validatedEnvVars.CENTROID_UPDATE_BATCH_SIZE,
+    retryAttempts: validatedEnvVars.RETRY_ATTEMPTS,
+    retryDelayMs: validatedEnvVars.RETRY_DELAY_MS,
+  },
+
+  limits: {
+    maxTokensPerMinute: validatedEnvVars.MAX_TOKENS_PER_MINUTE,
+    maxRequestsPerMinute: validatedEnvVars.MAX_REQUESTS_PER_MINUTE,
+    minClusterSize: validatedEnvVars.MIN_CLUSTER_SIZE,
+  },
+
+  monitoring: {
+    metricsPort: validatedEnvVars.METRICS_PORT,
+  },
+});
+
+
+An example repositoryimport { SupabaseClient } from "@/lib/supabase";
+import { ProcessedPost } from "@/types/index";
+import { SoluvaPost } from "@soluva/types/global";
+
+interface PostsRepositoryInterface {
+  findById<T extends keyof ProcessedPost>(
+    id: string,
+    fields?: T[]
+  ): Promise<Pick<ProcessedPost, T> | null>;
+
+  findMany<T extends keyof ProcessedPost>(
+    filters?: Partial<ProcessedPost>,
+    fields?: T[],
+    limit?: number,
+    offset?: number
+  ): Promise<Pick<ProcessedPost, T>[]>;
+
+  create(post: SoluvaPost): Promise<ProcessedPost>;
+
+  updateById(
+    id: string,
+    updates: Partial<ProcessedPost>
+  ): Promise<ProcessedPost>;
+
+  deleteById(id: string): Promise<void>;
+}
+
+export class PostsRepository implements PostsRepositoryInterface {
+  private table = "posts" as const;
+
+  constructor(private supabase: SupabaseClient) {}
+
+  /** Build a select clause */
+  private buildSelect<T extends keyof ProcessedPost>(fields?: T[]): string {
+    return fields?.length
+      ? fields.map((f) => this.toSnakeCase(String(f))).join(", ")
+      : "*";
+  }
+
+  /** camelCase → snake_case */
+  private toSnakeCase(field: string): string {
+    return field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+  }
+
+  /** object camelCase → snake_case */
+  private mapToSnakeCase(obj: Record<string, any>): Record<string, any> {
+    return Object.fromEntries(
+      Object.entries(obj).map(([k, v]) => [this.toSnakeCase(k), v])
+    );
+  }
+
+  /** ---------------- Repository methods ---------------- */
+
+  async findById<T extends keyof ProcessedPost>(
+    id: string,
+    fields?: T[]
+  ): Promise<Pick<ProcessedPost, T> | null> {
+    const { data, error } = await this.supabase
+      .from(this.table)
+      .select(this.buildSelect(fields))
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data as unknown as Pick<ProcessedPost, T> | null;
+  }
+
+  async findMany<T extends keyof ProcessedPost>(
+    filters: Partial<ProcessedPost> = {},
+    fields?: T[],
+    limit?: number,
+    offset?: number
+  ): Promise<Pick<ProcessedPost, T>[]> {
+    let query = this.supabase.from(this.table).select(this.buildSelect(fields));
+
+    // apply filters
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== null && value !== undefined) {
+        query = query.eq(this.toSnakeCase(key), value);
+      }
+    }
+
+    // pagination
+    if (typeof limit === "number") {
+      const start = offset ?? 0;
+      const end = start + limit - 1;
+      query = query.range(start, end);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return (data ?? []) as unknown as Pick<ProcessedPost, T>[];
+  }
+
+  async create(post: SoluvaPost): Promise<ProcessedPost> {
+    const author =
+      post.author;
+
+    const insertData = this.mapToSnakeCase({
+      ...post,
+      author,
+      metadata: post.metadata ?? {},
+      status: "unprocessed",
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { data, error } = await this.supabase
+      .from(this.table)
+      .upsert(insertData, { onConflict: "id" })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return data as ProcessedPost;
+  }
+
+  async updateById(
+    id: string,
+    updates: Partial<ProcessedPost>
+  ): Promise<ProcessedPost> {
+    const { data, error } = await this.supabase
+      .from(this.table)
+      .update(this.mapToSnakeCase(updates))
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return data as ProcessedPost;
+  }
+
+  async deleteById(id: string): Promise<void> {
+    const { error } = await this.supabase
+      .from(this.table)
+      .delete()
+      .eq("id", id);
+    if (error) throw error;
+  }
+
+
+
+  /** ---------------- Domain-specific updates ---------------- */
+
+  async acquireLock(id: string): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from(this.table)
+      .update({
+        status: "processing",
+        processing_started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .in("status", ["unprocessed", "failed"])
+      .or("retry_count.lt.3,retry_count.is.null")
+      .select("id");
+
+    if (error) {
+      console.error(`Failed to acquire lock for post ${id}:`, error);
+      return false;
+    }
+
+    return Array.isArray(data) && data.length > 0;
+  }
+
+  async releaseLock(id: string, success: boolean, errorMessage?: string): Promise<void> {
+    if (success) {
+      await this.updateById(id, {
+        status: "processed",
+        processedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    } else {
+      // increment retry_count requires RPC or custom SQL for atomicity
+      await this.updateById(id, {
+        status: "failed",
+        failedAt: new Date().toISOString(),
+        errorMessage: errorMessage ?? null,
+        updatedAt: new Date().toISOString(),
+      });
+      await this.supabase.rpc("increment_retry", { p_post_id: id }); // RPC created in DB
+    }
+  }
+
+  async updateValidityCheck(id: string, isValid: boolean, reason?: string): Promise<void> {
+    await this.updateById(id, {
+      isValid,
+      validityReason: reason ?? null,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async updateClassification(id: string, classification: string, confidence: number): Promise<void> {
+    await this.updateById(id, {
+      classification,
+      classificationConfidence: confidence,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async updateSemanticAnalysis(
+    id: string,
+    summary: string,
+    embedding: number[],
+    keywords: string[]
+  ): Promise<void> {
+    await this.updateById(id, {
+      summary,
+      embedding, // pgvector accepts array directly
+      keywords,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async updateSentiment(id: string, label: string, score: number): Promise<void> {
+    await this.updateById(id, {
+      sentimentLabel: label,
+      sentimentScore: score,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async updateCategory(id: string, categoryId: number): Promise<void> {
+    await this.updateById(id, {
+      categoryId,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async updateCluster(id: string, clusterId: number): Promise<void> {
+    await this.updateById(id, {
+      clusterId,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async updateSpamPiiFlags(id: string, isSpam: boolean, hasPii: boolean, notes?: string): Promise<void> {
+    await this.updateById(id, {
+      isSpam,
+      hasPii,
+      moderationNotes: notes ?? null,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+}
+}
