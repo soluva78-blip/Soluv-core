@@ -1,9 +1,9 @@
-import { AgentResult } from "../types/index.js";
-import { ClustersRepository } from "../repositories/clusters.repository.js";
-import { embeddingsService } from "../utils/embeddings.js";
-import { metricsCollector } from "../utils/metrics.js";
-import { config } from "../config/env.js";
-import { llmClient } from "../utils/llm.js";
+import { AgentResult } from "@/types";
+import { ClustersRepository } from "@/repositories/clusters.repository";
+import { embeddingsService } from "@/utils/embeddings";
+import { metricsCollector } from "@/utils/metrics";
+import { config } from "@/config";
+import { llmClient } from "@/utils/llm";
 
 export class ClusterAgent {
   constructor(private clustersRepo: ClustersRepository) {}

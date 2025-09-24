@@ -1,5 +1,5 @@
 import { OpenAIEmbeddings } from "@langchain/openai";
-import { config } from "../config/env.js";
+import { config } from "@/config";
 
 export class EmbeddingsService {
   private embeddingsModel: OpenAIEmbeddings;

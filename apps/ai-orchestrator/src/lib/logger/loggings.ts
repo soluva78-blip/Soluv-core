@@ -10,12 +10,7 @@ const { combine, printf, timestamp, colorize, json } = format;
 interface LogContext {
   id?: string;
   title?: string;
-  score?: number;
-  relevance?: number;
-  reasons?: string[];
   error?: string | Error;
-  subreddit?: string;
-  loopAttempt?: number;
   [key: string]: unknown;
 }
 

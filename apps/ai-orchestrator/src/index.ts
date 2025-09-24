@@ -1,26 +1,46 @@
-// src/worker.ts
-import "dotenv/config";
-import { createWorker } from "@/lib/scheduler";
-import { supabase } from "@/lib/supabase";
-import { OrchestratorService } from "@/services/orchestrator.service";
+#!/usr/bin/env node
+
 import { logger } from "@/lib/logger";
+import "dotenv/config";
 
-const orchestrator = new OrchestratorService(supabase);
+// Main entry point - can be extended to include API server, admin interface, etc.
+async function main() {
+  const mode = process.argv[2] || "worker";
 
-const worker = createWorker("orchestrator", async (job) => {
-  const { postId } = job.data;
-  logger.info(`Worker picked job for post ${postId}`);
+  switch (mode) {
+    case "worker":
+      logger.info("Starting orchestrator in worker mode...");
+      require("./worker");
+      break;
 
-  await orchestrator.processPost(postId);
+    case "server":
+      logger.info("Starting orchestrator in server mode...");
+      require("./server");
+      break;
+
+    default:
+      logger.info("Usage: npm start [worker|server]");
+      logger.info("Defaulting to worker mode...");
+      require("./worker");
+  }
+}
+
+// Handle uncaught exceptions
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error(`Unhandled Rejection at: ${promise}, reason:, ${reason}`);
+  process.exit(1);
 });
 
-// Handle worker lifecycle / errors
-worker.on("completed", (job) => {
-  logger.info(`✅ Job ${job.id} completed for post ${job.data.postId}`);
+process.on("uncaughtException", (error) => {
+  logger.error("Uncaught Exception:", {
+    error,
+  });
+  process.exit(1);
 });
 
-worker.on("failed", (job, err) => {
-  logger.error(`❌ Job ${job?.id} failed: ${err.message}`);
-});
-
-logger.info("🚀 Orchestrator worker running...");
+if (require.main === module) {
+  main().catch((error) => {
+    logger.error("Failed to start orchestrator:", error);
+    process.exit(1);
+  });
+}

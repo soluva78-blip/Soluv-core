@@ -47,29 +47,31 @@ export class ClustersRepository {
     return data as unknown as T | null;
   }
 
-  async create(
-    centroid: number[],
-    categoryId?: number,
-    name?: string
-  ): Promise<Cluster> {
-    const insertData = this.mapToSnakeCase({
-      centroid,
-      categoryId,
-      name: name || `Cluster_${Date.now()}`,
-      memberCount: 1,
-    });
+  async create(data: {
+    name?: string;
+    centroid: number[];
+    memberCount?: number;
+    categoryId?: number;
+    metadata?: any;
+  }): Promise<Cluster> {
+    const insertData = {
+      name: data.name || `Cluster_${Date.now()}`,
+      centroid: data.centroid,
+      member_count: data.memberCount || 1,
+      category_id: data.categoryId,
+      metadata: data.metadata || {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
 
-    const { data, error } = await this.supabase
+    const { data: result, error } = await this.supabase
       .from(this.table)
-      .insert({
-        ...insertData,
-        centroid: JSON.stringify(insertData.centroid),
-      })
+      .insert(insertData)
       .select("*")
       .single();
 
     if (error) throw error;
-    return data;
+    return result as Cluster;
   }
 
   async updateById(id: number, updates: Record<string, any>): Promise<Cluster> {
@@ -132,17 +134,11 @@ export class ClustersRepository {
   async updateCentroid(
     clusterId: number,
     newCentroid: number[],
-    incrementCount = true
+    newMemberCount: number
   ): Promise<void> {
     await this.updateById(clusterId, {
       centroid: newCentroid,
-      ...(incrementCount
-        ? {
-            memberCount: this.supabase.rpc("increment_member_count", {
-              p_cluster_id: clusterId,
-            }),
-          }
-        : {}),
+      memberCount: newMemberCount,
       updatedAt: new Date().toISOString(),
     });
   }

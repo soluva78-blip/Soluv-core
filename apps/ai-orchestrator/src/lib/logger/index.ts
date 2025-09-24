@@ -2,6 +2,6 @@ import { config } from "@/config";
 import { AppLogger, buildDevLogger, prodDevLogger } from "./loggings";
 
 const baseLogger =
-  config.appEnvironment === "production" ? prodDevLogger() : buildDevLogger();
+  config.app.environment === "production" ? prodDevLogger() : buildDevLogger();
 
-export const logger = new AppLogger(baseLogger, "reddit-collector");
+export const logger = new AppLogger(baseLogger, "ai-orchestrator");
