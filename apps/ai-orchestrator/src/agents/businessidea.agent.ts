@@ -3,10 +3,10 @@ import { jsonParser } from "@/utils/jsonParser";
 import { llmClient } from "@/utils/llm";
 import { metricsCollector } from "@/utils/metrics";
 
-export class ValidityAgent {
-  private readonly agentName = "validity";
+export class BusinessIdeaAgent {
+  private readonly agentName = "business-idea";
 
-  async checkValidity(title: string, body: string): Promise<AgentResult> {
+  async generateIdea(title: string, body: string): Promise<AgentResult> {
     const startTime = Date.now();
 
     try {
@@ -14,36 +14,26 @@ export class ValidityAgent {
         return this.buildResult(
           false,
           "Missing title or body content",
+          null,
           startTime,
           0
         );
       }
 
-      if (body.length < 10) {
-        return this.buildResult(
-          false,
-          "Content too short to be meaningful",
-          startTime,
-          0
-        );
+      const prompt = `Analyze the following post and determine whether it is primarily a problem statement or a solution suggestion. 
+      Then, paraphrase it into a concise business idea (1–2 lines only) that stays within the same context.
+      
+      Title: ${title}
+      Body: ${body}
+      
+      Output strictly in valid JSON format:
+      {
+        "type": "problem" | "solution",
+        "businessIdea": "string (short, 1–2 lines only, e.g. 'Build an AI-powered health app using gamification to improve fitness engagement.')"
       }
-
-      // --- LLM-based validity check ---
-      const prompt = `Analyze if this post describes a real-world problem, pain point, or a suggestion for a new solution/product that could inspire a business idea.
-    
-Title: ${title}
-Body: ${body}
-
-Important rules:
-- Posts that are only about recruiting, pitching, sharing achievements, or asking for partners/investors are NOT valid.
-- Posts that describe frustrations, inefficiencies, or unmet needs ARE valid.
-- Posts that propose or suggest new tools, apps, or services ARE valid.
-
-Respond strictly in valid JSON format:
-{"isValid": boolean, "reason": "string explanation"}
-`;
-
-      const llmResult = await llmClient.generateCompletion(prompt, 150);
+      `;
+      
+      const llmResult = await llmClient.generateCompletion(prompt, 200);
 
       if (!llmResult.success) {
         this.recordMetrics(startTime, 0, false);
@@ -54,14 +44,17 @@ Respond strictly in valid JSON format:
         };
       }
 
-      let parsed: { isValid: boolean; reason: string };
+      let parsed: { type: "problem" | "solution"; businessIdea: string };
       try {
         parsed = jsonParser(llmResult.data, {
-          isValid: "boolean",
-          reason: "string",
+          type: ["problem", "solution"],
+          businessIdea: "string",
         });
       } catch {
-        parsed = { isValid: false, reason: "LLM returned invalid JSON" };
+        parsed = {
+          type: "problem",
+          businessIdea: "LLM returned invalid JSON",
+        };
       }
 
       const result: AgentResult = {
@@ -86,15 +79,19 @@ Respond strictly in valid JSON format:
   }
 
   private buildResult(
-    isValid: boolean,
-    reason: string,
+    successFlag: boolean,
+    message: string,
+    businessIdea: string | null,
     startTime: number,
     tokensUsed: number
   ): AgentResult {
     const latencyMs = Date.now() - startTime;
     const result: AgentResult = {
       success: true,
-      data: { isValid, reason },
+      data: {
+        type: successFlag ? "problem" : "solution",
+        businessIdea: businessIdea || message,
+      },
       tokensUsed,
       latencyMs,
     };
@@ -117,4 +114,4 @@ Respond strictly in valid JSON format:
   }
 }
 
-export const validityAgent = new ValidityAgent();
+export const businessIdeaAgent = new BusinessIdeaAgent();

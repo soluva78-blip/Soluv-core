@@ -1,4 +1,5 @@
 import { AgentResult } from "@/types";
+import { jsonParser } from "@/utils/jsonParser";
 import { llmClient } from "@/utils/llm";
 import { metricsCollector } from "@/utils/metrics";
 
@@ -13,12 +14,16 @@ export class SentimentAgent {
 Title: ${title}
 Body: ${body}
 
+Important: If the sentiment appears mixed, classify it as "neutral".
+
 Respond with JSON:
 {
   "sentiment": "positive" | "neutral" | "negative",
   "score": -1.0 to 1.0,
   "confidence": 0.0 to 1.0
-}`;
+}
+  
+ `;
 
       const llmResult = await llmClient.generateCompletion(prompt, 150);
 
@@ -42,7 +47,12 @@ Respond with JSON:
         confidence: number;
       };
       try {
-        sentimentData = JSON.parse(llmResult.data as string);
+        sentimentData = jsonParser(llmResult.data, {
+          sentiment: "string",
+          score: "number",
+          confidence: "number",
+        });
+
       } catch {
         sentimentData = { sentiment: "neutral", score: 0.0, confidence: 0.5 };
       }

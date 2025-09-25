@@ -1,29 +1,32 @@
 import { CategoriesRepository } from "@/repositories/categories.repository";
-import { AgentResult } from "@/types";
+import { AgentResult, Category } from "@/types";
+import { jsonParser } from "@/utils/jsonParser";
 import { llmClient } from "@/utils/llm";
 import { metricsCollector } from "@/utils/metrics";
 
 export class CategoryAgent {
   constructor(private categoriesRepo: CategoriesRepository) {}
 
-  async assignCategory(
-    title: string,
-    body: string,
-    classification: string
-  ): Promise<AgentResult> {
+  async assignCategory(title: string, body: string): Promise<AgentResult> {
     const startTime = Date.now();
     const agentName = "category";
 
     try {
-      const categoryName = await this.determineCategoryName(
+      const allCategories = await this.categoriesRepo.findAll();
+
+      const newCategory = await this.determineCategoryName(
         title,
         body,
-        classification
+        allCategories
       );
 
+      if (!newCategory?.industryName)
+        throw new Error("LLM returned invalid JSON");
+
       const category = await this.categoriesRepo.findOrCreate(
-        categoryName,
-        `Auto-generated category for ${classification} posts`
+        newCategory?.industryName,
+        newCategory?.description,
+        newCategory?.parentId ?? undefined
       );
 
       const result = {
@@ -51,33 +54,57 @@ export class CategoryAgent {
   private async determineCategoryName(
     title: string,
     body: string,
-    classification: string
-  ): Promise<string> {
-    const prompt = `You are a categorization system for industries.
-Classify this post into an industry domain such as:
-- FinTech
-- HealthTech
-- RetailTech
-- EdTech
-- PropTech
-- GovTech
-- ClimateTech
-- Cybersecurity
-- AI/ML
-- Other (if nothing matches)
+    allIndustries: Category[]
+  ): Promise<{
+    industryName: string;
+    description: string;
+    parentId: number | null;
+  } | null> {
+    const prompt = `
+      You are an assistant that classifies posts into industries.
 
-Title: ${title}
-Body: ${body}
-Classification: ${classification}
-
-Respond with only the industry name.`;
+      Existing industries in the system (with IDs):
+      ${allIndustries.map((c) => `- ${c.id}: ${c.name}`).join("\n")}
+      
+      Instructions:
+      1. Read the title, body, and classification of the post.
+      2. Identify the most relevant industry.
+        - If the post clearly belongs to one of the existing industries, return that industry name exactly as listed.
+        - If it should be a subcategory of an existing industry, return the subcategory name as "industryName" and set "parentId" to the parent industry’s ID.
+      3. Always generate a clear, short description (1–2 sentences) for the industry or subcategory.
+      4. Respond ONLY with valid JSON in this schema:
+      {
+        "industryName": "string",
+        "description": "string",
+        "parentId": number | null
+      }
+      
+      Title: ${title}
+      Body: ${body}
+    `;
 
     const llmResult = await llmClient.generateCompletion(prompt, 50);
 
-    if (llmResult.success && llmResult.data) {
-      return (llmResult.data as string).trim().replace(/['"]/g, "");
+    if (!llmResult.success) {
+      return null;
     }
 
-    return "Other";
+    let parsed: {
+      industryName: string;
+      description: string;
+      parentId: number | null;
+    };
+
+    try {
+      parsed = jsonParser(llmResult.data, {
+        industryName: "string",
+        description: "string",
+        parentId: ["number", null],
+      });
+
+      return parsed;
+    } catch {
+      return null;
+    }
   }
 }

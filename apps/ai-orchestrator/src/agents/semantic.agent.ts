@@ -1,5 +1,6 @@
 import { AgentResult } from "@/types";
 import { embeddingsService } from "@/utils/embeddings";
+import { jsonParser } from "@/utils/jsonParser";
 import { llmClient } from "@/utils/llm";
 import { metricsCollector } from "@/utils/metrics";
 
@@ -64,7 +65,8 @@ Return as a JSON array of strings.`;
 
       let keywords: string[];
       try {
-        keywords = JSON.parse(keywordsResult.data as string);
+        keywords = jsonParser<string[]>(keywordsResult.data);
+
       } catch {
         // fallback: split by comma
         keywords = (keywordsResult.data as string)

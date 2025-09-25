@@ -68,7 +68,7 @@ export class ClustersRepository {
       .from(this.table)
       .insert({
         ...insertData,
-        centroid: `[${insertData.centroid.join(',')}]` // Convert array to string for pgvector
+        centroid: `[${insertData.centroid.join(",")}]`, // Convert array to string for pgvector
       })
       .select("*")
       .single();
@@ -99,10 +99,7 @@ export class ClustersRepository {
 
   /** ---------------- Domain-specific methods ---------------- */
 
-  async findNearestCluster(
-    embedding: number[],
-    threshold: number
-  ): Promise<any | null> {
+  async findNearestCluster(embedding: number[], threshold: number) {
     const embeddingString = `[${embedding.join(",")}]`;
 
     const { data, error } = await this.supabase.rpc("find_nearest_cluster", {
@@ -140,7 +137,7 @@ export class ClustersRepository {
     newMemberCount: number
   ): Promise<void> {
     await this.updateById(clusterId, {
-      centroid: `[${newCentroid.join(',')}]`, // Convert array to string for pgvector
+      centroid: `[${newCentroid.join(",")}]`, // Convert array to string for pgvector
       memberCount: newMemberCount,
       updatedAt: new Date().toISOString(),
     });

@@ -1,4 +1,5 @@
 import { AgentResult } from "@/types";
+import { jsonParser } from "@/utils/jsonParser";
 import { llmClient } from "@/utils/llm";
 import { metricsCollector } from "@/utils/metrics";
 
@@ -49,7 +50,10 @@ Respond strictly in valid JSON format:
 
       let parsed: { classification: string; confidence: number };
       try {
-        parsed = JSON.parse(llmResult.data as string);
+        parsed = jsonParser(llmResult.data, {
+          classification: "string",
+          confidence: "number",
+        });
       } catch {
         parsed = { classification: "other", confidence: 0.0 };
       }

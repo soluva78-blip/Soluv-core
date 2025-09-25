@@ -18,14 +18,18 @@ export class ClusterAgent {
     const agentName = "cluster";
 
     try {
-      const nearestCluster = await this.clustersRepo.findNearestCluster(
+      const nearestClusters = await this.clustersRepo.findNearestCluster(
         embedding,
         config.orchestration.clusterSimilarityThreshold
       );
 
+      const nearestCluster = nearestClusters?.[0]
+      console.log("reached here", nearestCluster)
+
       let clusterId: number;
 
       if (nearestCluster) {
+        
         clusterId = nearestCluster.id;
 
         const newCentroid = embeddingsService.updateCentroidIncremental(
@@ -42,6 +46,7 @@ export class ClusterAgent {
 
         await this.clustersRepo.incrementMemberCount(clusterId);
       } else {
+        console.log({title})
         const clusterName = await this.generateClusterName(title);
 
         const newCluster = await this.clustersRepo.create({
@@ -57,6 +62,8 @@ export class ClusterAgent {
 
         clusterId = newCluster.id;
       }
+      console.log("got to the end");
+
 
       const result = {
         success: true,

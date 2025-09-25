@@ -1,4 +1,5 @@
 import { AgentResult } from "@/types";
+import { jsonParser } from "@/utils/jsonParser";
 import { llmClient } from "@/utils/llm";
 import { metricsCollector } from "@/utils/metrics";
 
@@ -74,7 +75,11 @@ Respond in strict JSON:
 
       if (llmResult.success && llmResult.data) {
         try {
-          llmAnalysis = JSON.parse(llmResult.data as string);
+          llmAnalysis = jsonParser(llmResult.data, {
+            isSpam: "boolean",
+            hasPii: "boolean",
+            notes: "string",
+          });
         } catch {
           // fallback if LLM returns text instead of JSON
           llmAnalysis = {

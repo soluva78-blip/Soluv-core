@@ -195,6 +195,7 @@ export type Database = {
           classification_confidence: number | null
           cluster_id: number | null
           created_at: string | null
+          description: string | null
           embedding: string | null
           error_message: string | null
           failed_at: string | null
@@ -205,16 +206,18 @@ export type Database = {
           keywords: string[] | null
           metadata: Json | null
           moderation_notes: string | null
+          name: string | null
+          post_type: Database["public"]["Enums"]["post_type"] | null
           processed_at: string | null
           processing_started_at: string | null
           retry_count: number | null
           score: number | null
           sentiment_label: Database["public"]["Enums"]["sentiment_label"] | null
           sentiment_score: number | null
+          source: string
           status: Database["public"]["Enums"]["post_status"] | null
           summary: string | null
           title: string
-          type: string
           updated_at: string | null
           url: string
           validity_reason: string | null
@@ -229,6 +232,7 @@ export type Database = {
           classification_confidence?: number | null
           cluster_id?: number | null
           created_at?: string | null
+          description?: string | null
           embedding?: string | null
           error_message?: string | null
           failed_at?: string | null
@@ -239,6 +243,8 @@ export type Database = {
           keywords?: string[] | null
           metadata?: Json | null
           moderation_notes?: string | null
+          name?: string | null
+          post_type?: Database["public"]["Enums"]["post_type"] | null
           processed_at?: string | null
           processing_started_at?: string | null
           retry_count?: number | null
@@ -247,10 +253,10 @@ export type Database = {
             | Database["public"]["Enums"]["sentiment_label"]
             | null
           sentiment_score?: number | null
+          source: string
           status?: Database["public"]["Enums"]["post_status"] | null
           summary?: string | null
           title: string
-          type: string
           updated_at?: string | null
           url: string
           validity_reason?: string | null
@@ -265,6 +271,7 @@ export type Database = {
           classification_confidence?: number | null
           cluster_id?: number | null
           created_at?: string | null
+          description?: string | null
           embedding?: string | null
           error_message?: string | null
           failed_at?: string | null
@@ -275,6 +282,8 @@ export type Database = {
           keywords?: string[] | null
           metadata?: Json | null
           moderation_notes?: string | null
+          name?: string | null
+          post_type?: Database["public"]["Enums"]["post_type"] | null
           processed_at?: string | null
           processing_started_at?: string | null
           retry_count?: number | null
@@ -283,10 +292,10 @@ export type Database = {
             | Database["public"]["Enums"]["sentiment_label"]
             | null
           sentiment_score?: number | null
+          source?: string
           status?: Database["public"]["Enums"]["post_status"] | null
           summary?: string | null
           title?: string
-          type?: string
           updated_at?: string | null
           url?: string
           validity_reason?: string | null
@@ -377,16 +386,15 @@ export type Database = {
         }[]
       }
       find_nearest_cluster: {
-        Args: { p_embedding: string; p_threshold: number }
+        Args:
+          | { p_embedding: string; p_threshold: number }
+          | { p_embedding: string; p_threshold: number }
         Returns: {
-          category_id: number
           centroid: string
-          created_at: string
-          distance: number
           id: number
           member_count: number
           name: string
-          updated_at: string
+          similarity: number
         }[]
       }
       halfvec_avg: {
@@ -495,6 +503,7 @@ export type Database = {
         | "documentation"
         | "other"
       post_status: "unprocessed" | "processing" | "processed" | "failed"
+      post_type: "problem" | "solution"
       sentiment_label: "positive" | "neutral" | "negative"
     }
     CompositeTypes: {
@@ -632,6 +641,7 @@ export const Constants = {
         "other",
       ],
       post_status: ["unprocessed", "processing", "processed", "failed"],
+      post_type: ["problem", "solution"],
       sentiment_label: ["positive", "neutral", "negative"],
     },
   },

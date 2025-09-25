@@ -182,6 +182,10 @@ class LLMClient {
     throw lastError!;
   }
 
+  getModel () {
+    return this.llm
+  }
+
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

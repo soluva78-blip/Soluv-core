@@ -2,8 +2,8 @@ import { SupabaseClient } from "@/lib/supabase";
 import {
   PostClassificationType,
   ProcessedPost,
-  SentimentLabelType,
   RawPost,
+  SentimentLabelType,
 } from "@/types/index";
 
 interface PostsRepositoryInterface {
@@ -24,7 +24,7 @@ interface PostsRepositoryInterface {
   updateById(
     id: string,
     updates: Partial<ProcessedPost>
-  ): Promise<ProcessedPost>;
+  ): Promise<ProcessedPost | null>;
 
   deleteById(id: string): Promise<void>;
 
@@ -38,7 +38,8 @@ interface PostsRepositoryInterface {
   updateValidityCheck(
     id: string,
     isValid: boolean,
-    reason?: string
+    explanation: string,
+    label: string
   ): Promise<void>;
   updateClassification(
     id: string,
@@ -149,14 +150,51 @@ export class PostsRepository implements PostsRepositoryInterface {
   async createFromRawPost(rawPost: RawPost): Promise<ProcessedPost> {
     const insertData = {
       id: rawPost.id,
-      type: rawPost.subreddit?.display_name || 'reddit',
+      source: rawPost.subreddit?.display_name || "reddit",
       title: rawPost.title,
       body: rawPost.body,
       author: rawPost.author.name,
       score: rawPost.score,
       url: rawPost.url,
-      status: 'processing' as const,
+      status: "processing" as const,
       processing_started_at: new Date().toISOString(),
+      metadata: {
+        ...rawPost.metadata,
+        numComments: rawPost.numComments,
+        permalink: rawPost.permalink,
+        createdUtc: rawPost.createdUtc,
+        isNsfw: rawPost.isNsfw,
+        subreddit: rawPost.subreddit,
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await this.supabase
+      .from(this.table)
+      .upsert(insertData, { onConflict: "id" })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return data as ProcessedPost;
+  }
+
+  async createDerivedProblem(
+    rawPost: RawPost & { description: string; isValid: boolean }
+  ): Promise<ProcessedPost> {
+    const insertData = {
+      id: `${rawPost.id} - Derived- ${crypto.randomUUID()}`,
+      source: rawPost.subreddit?.display_name || "reddit",
+      title: rawPost.title,
+      body: rawPost.body,
+      author: rawPost.author.name,
+      score: rawPost.score,
+      url: rawPost.url,
+      status: "processing" as const,
+      processing_started_at: new Date().toISOString(),
+      description: rawPost.description,
+      is_valid: rawPost.isValid,
       metadata: {
         ...rawPost.metadata,
         numComments: rawPost.numComments,
@@ -181,8 +219,9 @@ export class PostsRepository implements PostsRepositoryInterface {
 
   async updateById(
     id: string,
-    updates: Partial<ProcessedPost>
-  ): Promise<ProcessedPost> {
+    updates: Partial<ProcessedPost>,
+    ignoreNonExistent: boolean = false
+  ): Promise<ProcessedPost | null> {
     const { data, error } = await this.supabase
       .from(this.table)
       .update(this.mapToSnakeCase(updates))
@@ -190,7 +229,13 @@ export class PostsRepository implements PostsRepositoryInterface {
       .select("*")
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // PGRST116: Resource not found (when row doesn't exist)
+      if (error.code === "PGRST116" && ignoreNonExistent) {
+        return null;
+      }
+      throw error;
+    }
     return data as ProcessedPost;
   }
 
@@ -257,11 +302,13 @@ export class PostsRepository implements PostsRepositoryInterface {
   async updateValidityCheck(
     id: string,
     isValid: boolean,
-    reason?: string
+    explanation?: string,
+    label?: string
   ): Promise<void> {
     await this.updateById(id, {
       is_valid: isValid,
-      validity_reason: reason ?? null,
+      description: explanation,
+      title: label,
       updated_at: new Date().toISOString(),
     });
   }
@@ -309,6 +356,18 @@ export class PostsRepository implements PostsRepositoryInterface {
   async updateCategory(id: string, categoryId: number): Promise<void> {
     await this.updateById(id, {
       category_id: categoryId,
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  async updateBusinessIdea(
+    id: string,
+    name: string,
+    post_type: "problem" | "solution"
+  ): Promise<void> {
+    await this.updateById(id, {
+      name,
+      post_type,
       updated_at: new Date().toISOString(),
     });
   }
