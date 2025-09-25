@@ -9,14 +9,13 @@ import { CategoriesRepository } from "@/repositories/categories.repository";
 import { ClustersRepository } from "@/repositories/clusters.repository";
 import { MentionsRepository } from "@/repositories/mentions.repository";
 import { PostsRepository } from "@/repositories/posts.repository";
-import { AgentResult, ProcessedPost } from "@/types";
+import { AgentResult, ProcessedPost, RawPost } from "@/types";
 import { metricsCollector } from "@/utils/metrics";
-import { StateGraph } from "@langchain/langgraph";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export interface OrchestrationState {
   postId: string;
-  post?: ProcessedPost;
+  rawPost: RawPost;
   validityResult?: AgentResult<{
     isValid: boolean;
     reason: string;
@@ -35,8 +34,8 @@ export interface OrchestrationState {
     score: number;
     confidence: number;
   }>;
-  categoryResult?: AgentResult<{ categoryId: string; categoryName: string }>;
-  clusterResult?: AgentResult<{ clusterId: string; isNewCluster: boolean }>;
+  categoryResult?: AgentResult<{ categoryId: number; categoryName: string }>;
+  clusterResult?: AgentResult<{ clusterId: number; isNewCluster: boolean }>;
   spamResult?: AgentResult<{
     isSpam: boolean;
     hasPii: boolean;
@@ -59,10 +58,6 @@ export class OrchestratorService {
   private clusterAgent: ClusterAgent;
   private spamAgent: SpamAgent;
 
-  private app: ReturnType<
-    StateGraph<OrchestrationState, typeof this.channels>["compile"]
-  >;
-
   constructor(supabase: SupabaseClient) {
     this.postsRepo = new PostsRepository(supabase);
     this.categoriesRepo = new CategoriesRepository(supabase);
@@ -76,114 +71,131 @@ export class OrchestratorService {
     this.categoryAgent = new CategoryAgent(this.categoriesRepo);
     this.clusterAgent = new ClusterAgent(this.clustersRepo);
     this.spamAgent = new SpamAgent();
-
-    this.app = this.initializeGraph();
   }
 
-  private channels = Object.fromEntries(
-    (
-      [
-        "postId",
-        "post",
-        "validityResult",
-        "classificationResult",
-        "semanticResult",
-        "sentimentResult",
-        "categoryResult",
-        "clusterResult",
-        "spamResult",
-        "error",
-      ] as const
-    ).map((key) => [key, { reducer: (_: any, y: any) => y }])
-  );
-
-  private initializeGraph() {
-    const graph = new StateGraph<OrchestrationState, typeof this.channels>({
-      channels: this.channels,
-    })
-      .addNode("load_post", this.loadPost.bind(this))
-      .addNode("spam_check", this.spamCheck.bind(this))
-      .addNode("validity_check", this.validityCheck.bind(this))
-      .addNode("classification", this.classification.bind(this))
-      .addNode("semantic_analysis", this.semanticAnalysis.bind(this))
-      .addNode("sentiment_analysis", this.sentimentAnalysis.bind(this))
-      .addNode("category_assignment", this.categoryAssignment.bind(this))
-      .addNode("cluster_assignment", this.clusterAssignment.bind(this))
-      .addNode("record_mention", this.recordMention.bind(this))
-      .addNode("finalize", this.finalize.bind(this))
-      .addEdge("load_post", "spam_check")
-      .addConditionalEdges("spam_check", this.shouldContinue.bind(this), {
-        continue: "validity_check",
-        stop: "finalize",
-      })
-      .addConditionalEdges("validity_check", this.shouldContinue.bind(this), {
-        continue: "classification",
-        stop: "finalize",
-      })
-      .addEdge("classification", "semantic_analysis")
-      .addEdge("semantic_analysis", "sentiment_analysis")
-      .addEdge("sentiment_analysis", "category_assignment")
-      .addEdge("category_assignment", "cluster_assignment")
-      .addEdge("cluster_assignment", "record_mention")
-      .addEdge("record_mention", "finalize")
-      .addEdge("__start__", "load_post");
-
-    // ✅ cast the type to satisfy TS
-    return graph.compile() as ReturnType<
-      StateGraph<OrchestrationState, typeof this.channels>["compile"]
-    >;
-  }
-
-  async processPost(postId: string): Promise<void> {
+  async processPost(rawPost: RawPost): Promise<void> {
     const startTime = Date.now();
+    const postId = rawPost.id;
+    
     try {
-      const lockAcquired = await this.postsRepo.acquireLock(postId);
-      if (!lockAcquired) {
-        console.log(`Post ${postId} already processing/failed too often`);
+      // Check if post already processed to avoid duplicates
+      const existingPost = await this.postsRepo.findById(postId);
+      if (existingPost && existingPost.status === 'processed') {
+        console.log(`Post ${postId} already processed, skipping...`);
         return;
       }
 
       console.log(`Processing post ${postId}...`);
 
-      const initialState: OrchestrationState = { postId };
-      await this.app.invoke(initialState); // ✅ FIXED
+      // Create initial database record for tracking
+      await this.postsRepo.createFromRawPost(rawPost);
 
-      await this.postsRepo.releaseLock(postId, true);
+      // Execute orchestration pipeline sequentially
+      await this.executeOrchestrationPipeline(rawPost);
+
+      // Mark as completed
+      await this.postsRepo.updateById(postId, {
+        status: 'processed',
+        processed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
 
       const processingTime = Date.now() - startTime;
       metricsCollector.recordPostProcessed(processingTime);
       console.log(`Finished post ${postId} in ${processingTime}ms`);
     } catch (error) {
       console.error(`Failed post ${postId}:`, error);
-      await this.postsRepo.releaseLock(postId, false, (error as Error).message);
+      
+      // Mark as failed
+      await this.postsRepo.updateById(postId, {
+        status: 'failed',
+        failed_at: new Date().toISOString(),
+        error_message: (error as Error).message,
+        updated_at: new Date().toISOString(),
+      });
+      
       metricsCollector.recordError();
       throw error;
     }
   }
-  // === Graph Nodes ===
 
-  private async loadPost(
-    state: OrchestrationState
-  ): Promise<Partial<OrchestrationState>> {
-    const post = await this.postsRepo.findById(state.postId);
-    if (!post) throw new Error(`Post ${state.postId} not found`);
-    return { post };
+  private async executeOrchestrationPipeline(rawPost: RawPost): Promise<void> {
+    let state: OrchestrationState = {
+      postId: rawPost.id,
+      rawPost
+    };
+
+    // Step 1: Spam/PII Check
+    const spamResult = await this.spamCheck(state);
+    state = { ...state, ...spamResult };
+    
+    if (this.shouldStop(state)) {
+      console.log(`Stopping processing for post ${rawPost.id} - spam/PII detected`);
+      return;
+    }
+
+    // Step 2: Validity Check
+    const validityResult = await this.validityCheck(state);
+    state = { ...state, ...validityResult };
+    
+    if (this.shouldStop(state)) {
+      console.log(`Stopping processing for post ${rawPost.id} - not valid`);
+      return;
+    }
+
+    // Step 3: Classification
+    const classificationResult = await this.classification(state);
+    state = { ...state, ...classificationResult };
+
+    // Step 4: Semantic Analysis
+    const semanticResult = await this.semanticAnalysis(state);
+    state = { ...state, ...semanticResult };
+
+    // Step 5: Sentiment Analysis
+    const sentimentResult = await this.sentimentAnalysis(state);
+    state = { ...state, ...sentimentResult };
+
+    // Step 6: Category Assignment
+    const categoryResult = await this.categoryAssignment(state);
+    state = { ...state, ...categoryResult };
+
+    // Step 7: Cluster Assignment
+    const clusterResult = await this.clusterAssignment(state);
+    state = { ...state, ...clusterResult };
+
+    // Step 8: Record Mention
+    await this.recordMention(state);
+
+    console.log(`Successfully completed orchestration pipeline for post ${rawPost.id}`);
   }
+
+  private shouldStop(state: OrchestrationState): boolean {
+    if (state.spamResult?.data?.isSpam || state.spamResult?.data?.hasPii) {
+      return true;
+    }
+    if (state.validityResult && !state.validityResult.data?.isValid) {
+      return true;
+    }
+    return false;
+  }
+
+  // === Pipeline Steps ===
 
   private async spamCheck(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
-    const { post } = state;
-    if (!post) throw new Error("Post not loaded");
+    const { rawPost } = state;
+    if (!rawPost) throw new Error("Raw post not provided");
+    
     const result = await this.spamAgent.checkSpamAndPii(
-      post.title,
-      post.body,
-      post.author
+      rawPost.title,
+      rawPost.body,
+      rawPost.author.name
     );
 
     if (result.success) {
       await this.postsRepo.updateSpamPiiFlags(
-        post.id,
+        rawPost.id,
         result.data.isSpam,
         result.data.hasPii,
         result.data.notes
@@ -195,16 +207,19 @@ export class OrchestratorService {
   private async validityCheck(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
-    const { post } = state;
-    if (!post) throw new Error("Post not loaded");
+    const { rawPost } = state;
+    if (!rawPost) throw new Error("Raw post not provided");
+    
     const result = await this.validityAgent.checkValidity(
-      post.title,
-      post.body
+      rawPost.title,
+      rawPost.body
     );
+
+    console.log({result})
 
     if (result.success) {
       await this.postsRepo.updateValidityCheck(
-        post.id,
+        rawPost.id,
         result.data.isValid,
         result.data.reason
       );
@@ -215,16 +230,17 @@ export class OrchestratorService {
   private async classification(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
-    const { post } = state;
-    if (!post) throw new Error("Post not loaded");
+    const { rawPost } = state;
+    if (!rawPost) throw new Error("Raw post not provided");
+    
     const result = await this.classificationAgent.classifyPost(
-      post.title,
-      post.body
+      rawPost.title,
+      rawPost.body
     );
 
     if (result.success) {
       await this.postsRepo.updateClassification(
-        post.id,
+        rawPost.id,
         result.data.classification,
         result.data.confidence
       );
@@ -235,13 +251,14 @@ export class OrchestratorService {
   private async semanticAnalysis(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
-    const { post } = state;
-    if (!post) throw new Error("Post not loaded");
-    const result = await this.semanticAgent.analyzePost(post.title, post.body);
+    const { rawPost } = state;
+    if (!rawPost) throw new Error("Raw post not provided");
+    
+    const result = await this.semanticAgent.analyzePost(rawPost.title, rawPost.body);
 
     if (result.success) {
       await this.postsRepo.updateSemanticAnalysis(
-        post.id,
+        rawPost.id,
         result.data.summary,
         result.data.embedding,
         result.data.keywords
@@ -253,16 +270,17 @@ export class OrchestratorService {
   private async sentimentAnalysis(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
-    const { post } = state;
-    if (!post) throw new Error("Post not loaded");
+    const { rawPost } = state;
+    if (!rawPost) throw new Error("Raw post not provided");
+    
     const result = await this.sentimentAgent.analyzeSentiment(
-      post.title,
-      post.body
+      rawPost.title,
+      rawPost.body
     );
 
     if (result.success) {
       await this.postsRepo.updateSentiment(
-        post.id,
+        rawPost.id,
         result.data.sentiment,
         result.data.score
       );
@@ -273,16 +291,17 @@ export class OrchestratorService {
   private async categoryAssignment(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
-    const { post, classificationResult } = state;
-    if (!post) throw new Error("Post not loaded");
+    const { rawPost, classificationResult } = state;
+    if (!rawPost) throw new Error("Raw post not provided");
+    
     const result = await this.categoryAgent.assignCategory(
-      post.title,
-      post.body,
+      rawPost.title,
+      rawPost.body,
       classificationResult?.data?.classification!
     );
 
     if (result.success) {
-      await this.postsRepo.updateCategory(post.id, result.data.categoryId);
+      await this.postsRepo.updateCategory(rawPost.id, result.data.categoryId);
     }
     return { categoryResult: result };
   }
@@ -290,17 +309,18 @@ export class OrchestratorService {
   private async clusterAssignment(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
-    const { post, semanticResult, categoryResult } = state;
-    if (!post) throw new Error("Post not loaded");
+    const { rawPost, semanticResult, categoryResult } = state;
+    if (!rawPost) throw new Error("Raw post not provided");
+    
     const result = await this.clusterAgent.assignCluster(
-      post.id,
+      rawPost.id,
       semanticResult?.data?.embedding ?? [],
-      parseInt(categoryResult?.data?.categoryId!),
-      post.title
+      categoryResult?.data?.categoryId!,
+      rawPost.title
     );
 
     if (result.success) {
-      await this.postsRepo.updateCluster(post.id, result.data.clusterId);
+      await this.postsRepo.updateCluster(rawPost.id, result.data.clusterId);
     }
     return { clusterResult: result };
   }
@@ -308,8 +328,8 @@ export class OrchestratorService {
   private async recordMention(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
-    const { post, clusterResult, categoryResult, sentimentResult } = state;
-    if (!post) throw new Error("Post not loaded");
+    const { rawPost, clusterResult, categoryResult, sentimentResult } = state;
+    if (!rawPost) throw new Error("Raw post not provided");
 
     if (
       clusterResult?.success &&
@@ -317,28 +337,14 @@ export class OrchestratorService {
       sentimentResult?.success
     ) {
       await this.mentionsRepo.create(
-        post.id,
-        parseInt(clusterResult.data?.clusterId ?? "0"),
-        parseInt(categoryResult.data?.categoryId ?? "0"),
+        rawPost.id,
+        clusterResult.data?.clusterId!,
+        categoryResult.data?.categoryId!,
         sentimentResult.data?.score
       );
     }
     return {};
   }
 
-  private async finalize(
-    _: OrchestrationState
-  ): Promise<Partial<OrchestrationState>> {
-    return {};
-  }
 
-  private shouldContinue(state: OrchestrationState): string {
-    if (state.spamResult?.data?.isSpam || state.spamResult?.data?.hasPii) {
-      return "stop";
-    }
-    if (state.validityResult && !state.validityResult.data?.isValid) {
-      return "stop";
-    }
-    return "continue";
-  }
 }

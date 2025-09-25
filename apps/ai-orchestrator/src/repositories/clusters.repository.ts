@@ -66,7 +66,10 @@ export class ClustersRepository {
 
     const { data: result, error } = await this.supabase
       .from(this.table)
-      .insert(insertData)
+      .insert({
+        ...insertData,
+        centroid: `[${insertData.centroid.join(',')}]` // Convert array to string for pgvector
+      })
       .select("*")
       .single();
 
@@ -137,7 +140,7 @@ export class ClustersRepository {
     newMemberCount: number
   ): Promise<void> {
     await this.updateById(clusterId, {
-      centroid: newCentroid,
+      centroid: `[${newCentroid.join(',')}]`, // Convert array to string for pgvector
       memberCount: newMemberCount,
       updatedAt: new Date().toISOString(),
     });
@@ -170,6 +173,6 @@ export class ClustersRepository {
       avgEmbedding[i] /= members.length;
     }
 
-    await this.updateCentroid(clusterId, avgEmbedding, false);
+    await this.updateCentroid(clusterId, avgEmbedding, members.length);
   }
 }

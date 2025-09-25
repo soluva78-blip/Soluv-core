@@ -1,6 +1,7 @@
 import { logger } from "@/lib/logger";
 import { redisClient } from "@/lib/redisClient";
 import { PostsRepository } from "@/repositories/posts";
+import axios from "axios";
 import { Job, Worker } from "bullmq";
 import { QueueService } from "./queue.service";
 
@@ -16,9 +17,18 @@ export class WorkerService {
       "posts",
       async (job: Job) => {
         try {
+          const data = {...job.data, id:job?.data?._id}
           logger.info(`Processed Job - ${job.data}`);
+          const response = await axios.post(
+            "http://localhost:3005/api/process-post",
+            {
+              post: data,
+            }
+          );
 
-          await this.postsRepo.markProcessed(job.data._id);
+          if (!response.data.success) {
+            throw new Error("API call failed: " + response.data.message);
+          }
         } catch (err) {
           logger.error(`❌ Job ${job.id} failed`, {
             error: err as any,

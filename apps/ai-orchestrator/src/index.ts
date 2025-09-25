@@ -2,27 +2,30 @@
 
 import { logger } from "@/lib/logger";
 import "dotenv/config";
+import { connectMongoDB } from "./config/database";
+import { Post } from "./models/posts";
+import { QueueService } from "./services/queue.service";
+import { WorkerService } from "./worker";
+
+const queueService = new QueueService();
+new WorkerService(queueService);
+
+queueService.setBatchRefillCallback(async () => {
+  return Post.find({ processed: false }).limit(50).lean();
+});
+
+async function bootstrap() {
+  logger.info("🚀 Queue service starting...");
+  await connectMongoDB();
+  await queueService.checkAndRefillQueue();
+}
 
 // Main entry point - can be extended to include API server, admin interface, etc.
 async function main() {
-  const mode = process.argv[2] || "worker";
+  await bootstrap();
 
-  switch (mode) {
-    case "worker":
-      logger.info("Starting orchestrator in worker mode...");
-      require("./worker");
-      break;
-
-    case "server":
-      logger.info("Starting orchestrator in server mode...");
-      require("./server");
-      break;
-
-    default:
-      logger.info("Usage: npm start [worker|server]");
-      logger.info("Defaulting to worker mode...");
-      require("./worker");
-  }
+  logger.info("Starting orchestrator in server mode...");
+  require("./server");
 }
 
 // Handle uncaught exceptions
@@ -40,7 +43,8 @@ process.on("uncaughtException", (error) => {
 
 if (require.main === module) {
   main().catch((error) => {
-    logger.error("Failed to start orchestrator:", error);
+    console.log({ error });
+    logger.error("Failed to start orchestrator:", { error });
     process.exit(1);
   });
 }

@@ -11,6 +11,7 @@ const envSchema = Joi.object()
       .valid("development", "production", "staging")
       .required(),
     PORT: Joi.number().required(),
+    MONGO_URI: Joi.string().required(),
 
     // Supabase
     SUPABASE_URL: Joi.string().required(),
@@ -19,7 +20,9 @@ const envSchema = Joi.object()
     // Redis
     REDIS_HOST: Joi.string().required(),
     REDIS_PORT: Joi.string().required(),
-    REDIS_TTL: Joi.string().custom((value) => Number(value)).default("3600"),
+    REDIS_TTL: Joi.string()
+      .custom((value) => Number(value))
+      .default("3600"),
 
     // OpenAI
     OPENAI_API_KEY: Joi.string().min(1),
@@ -27,7 +30,7 @@ const envSchema = Joi.object()
     EMBEDDING_MODEL: Joi.string().default("text-embedding-ada-002"),
 
     // Orchestration & Processing
-    ORCH_CONCURRENCY: Joi.number().default(5),
+    ORCH_CONCURRENCY: Joi.number().default(1),
     BATCH_SIZE: Joi.number().default(10),
     RATE_LIMIT_PER_MINUTE: Joi.number().default(60),
     CLUSTER_SIMILARITY_THRESHOLD: Joi.number().default(0.7),
@@ -59,6 +62,8 @@ export const config = Object.freeze({
     environment: validatedEnvVars.NODE_ENV as INodeEnv,
     port: validatedEnvVars.PORT,
   },
+
+  mongo_url: validatedEnvVars.MONGO_URI,
 
   supabase: {
     url: validatedEnvVars.SUPABASE_URL,

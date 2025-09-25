@@ -1,8 +1,26 @@
-import { SoluvaPost } from "@soluva/types/global";
 import { Database } from "./database";
 
-export type TableNames = keyof Database["public"]["Tables"];
+// Raw post structure from MongoDB service
+export interface RawPost {
+  id: string;
+  title: string;
+  body: string;
+  author: {
+    name: string;
+  };
+  score: number;
+  numComments?: number;
+  subreddit?: {
+    display_name: string;
+  };
+  permalink?: string;
+  createdUtc?: number;
+  url: string;
+  isNsfw?: boolean;
+  metadata?: Record<string, any>;
+}
 
+// Processing results (stored in Postgres for analysis)
 export type ProcessedPost = Database["public"]["Tables"]["posts"]["Row"];
 export type Category = Database["public"]["Tables"]["categories"]["Row"];
 export type Cluster = Database["public"]["Tables"]["clusters"]["Row"];
@@ -16,9 +34,14 @@ export type SentimentLabelType = Database["public"]["Enums"]["sentiment_label"];
 
 export interface AgentContext {
   postId: string;
-  post: SoluvaPost;
+  post: RawPost;
   processedData: Partial<ProcessedPost>;
   metadata: Record<string, any>;
+}
+
+// Processing request payload
+export interface ProcessPostRequest {
+  post: RawPost;
 }
 
 export interface TrendScore {

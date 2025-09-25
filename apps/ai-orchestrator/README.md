@@ -2,11 +2,11 @@
 
 A complete AI-powered post processing orchestrator built with Node.js, TypeScript, and LangGraph. This service processes posts through a multi-stage pipeline including validity checks, classification, sentiment analysis, semantic analysis, clustering, and trend detection.
 
-## <× Architecture
+## <ï¿½ Architecture
 
-The orchestrator uses a graph-based pipeline with the following stages:
+The orchestrator accepts raw post JSON and processes it through a graph-based pipeline:
 
-1. **Load Post** - Fetches post from database
+1. **Accept Post JSON** - Receives post data from your MongoDB service
 2. **Spam/PII Check** - Detects spam and personal information
 3. **Validity Check** - Determines if post contains actionable problems
 4. **Classification** - Categorizes posts (bug, feature request, question, etc.)
@@ -15,9 +15,9 @@ The orchestrator uses a graph-based pipeline with the following stages:
 7. **Category Assignment** - Assigns to industry/domain categories
 8. **Cluster Assignment** - Groups similar posts using vector similarity
 9. **Record Mention** - Tracks mentions for trend analysis
-10. **Finalize** - Marks processing complete
+10. **Finalize** - Marks processing complete and stores results in Postgres
 
-## =€ Quick Start
+## =ï¿½ Quick Start
 
 ### Prerequisites
 
@@ -68,21 +68,66 @@ npm start
 
 ### Processing Posts
 
-To add posts to the processing queue, you can use the orchestrator queue:
+The orchestrator accepts raw post JSON (from your MongoDB service) and processes it through the AI pipeline. You have two options:
+
+**Option 1: API Endpoints (Recommended)**
+
+Start the API server:
+```bash
+npm start server
+```
+
+Send post JSON for processing:
+```bash
+# Queue for asynchronous processing
+curl -X POST http://localhost:3000/api/process-post \
+  -H "Content-Type: application/json" \
+  -d '{
+    "post": {
+      "id": "1ngg5or",
+      "title": "Are you solving a problem?",
+      "body": "I want to work with like-minded people...",
+      "author": {"name": "MostStorage8989"},
+      "score": 7,
+      "url": "https://reddit.com/...",
+      "subreddit": {"display_name": "startups"}
+    }
+  }'
+
+# Or process synchronously (waits for completion)
+curl -X POST http://localhost:3000/api/process-post-sync \
+  -H "Content-Type: application/json" \
+  -d '{"post": {...}}'
+```
+
+**Option 2: Direct Queue Integration**
 
 ```typescript
 import { addPostToQueue } from './src/queues/orchestrator.queue';
+import { RawPost } from './src/types';
 
-// Add a post for processing
-await addPostToQueue('post-id-123');
+const postData: RawPost = {
+  id: "1ngg5or",
+  title: "Are you solving a problem?",
+  body: "I want to work with like-minded people...",
+  author: { name: "MostStorage8989" },
+  score: 7,
+  url: "https://reddit.com/...",
+  subreddit: { display_name: "startups" }
+};
+
+// Add to queue
+await addPostToQueue(postData);
 ```
 
-Or directly run the worker:
+**Option 3: Worker Mode**
+
+Start the worker to process queued posts:
 ```bash
-npm run dev src/worker.ts
+npm start worker
 ```
 
-## =Ê Monitoring & Scripts
+## =ï¿½ Monitoring & Scripts
 
 ### Calculate Trends
 ```bash
@@ -94,8 +139,19 @@ npm run trends:calculate
 npm run clusters:recompute
 ```
 
+### API Endpoints
+
+When running in server mode, the orchestrator exposes these endpoints:
+
+- `GET /health` - Health check
+- `POST /api/process-post` - Queue post for async processing
+- `POST /api/process-post-sync` - Process post synchronously
+- `GET /api/queue/status` - Get queue status and metrics
+
 ### Check Queue Status
-The orchestrator exposes queue metrics that you can monitor programmatically.
+```bash
+curl http://localhost:3000/api/queue/status
+```
 
 ## =' Configuration
 
@@ -126,7 +182,7 @@ The service includes built-in rate limiting and cost controls:
 - Request batching for embeddings
 - Comprehensive metrics collection
 
-## >é Components
+## >ï¿½ Components
 
 ### Agents
 
@@ -155,7 +211,7 @@ Data access layer with methods for:
 - **ClusteringService**: Vector similarity and clustering algorithms
 - **TrendsService**: Trend detection and scoring
 
-## =Ä Database Schema
+## =ï¿½ Database Schema
 
 The service uses PostgreSQL with pgvector extension. Key tables:
 
@@ -186,14 +242,14 @@ graph TD
     M --> N[Mark Complete]
 ```
 
-## =¨ Error Handling
+## =ï¿½ Error Handling
 
 - **Idempotency**: Posts won't be processed twice
 - **Retry Logic**: Failed posts retry with exponential backoff
 - **Graceful Degradation**: Individual stage failures don't block the entire pipeline
 - **Comprehensive Logging**: Full audit trail of all processing steps
 
-## =È Metrics & Observability
+## =ï¿½ Metrics & Observability
 
 The service collects comprehensive metrics:
 
@@ -210,7 +266,7 @@ The service collects comprehensive metrics:
 - **Rate Limiting**: Protection against API abuse
 - **Input Validation**: Comprehensive input sanitization
 
-## >ê Testing
+## >ï¿½ Testing
 
 Run the test suite:
 ```bash
@@ -258,6 +314,6 @@ Logs are output to console in development. Configure log persistence as needed f
 3. Update documentation for API changes
 4. Use conventional commit messages
 
-## =Ä License
+## =ï¿½ License
 
 [Your License Here]

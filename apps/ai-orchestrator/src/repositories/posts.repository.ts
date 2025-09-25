@@ -3,8 +3,8 @@ import {
   PostClassificationType,
   ProcessedPost,
   SentimentLabelType,
+  RawPost,
 } from "@/types/index";
-import { SoluvaPost } from "@soluva/types/global";
 
 interface PostsRepositoryInterface {
   findById<T extends keyof ProcessedPost>(
@@ -19,7 +19,7 @@ interface PostsRepositoryInterface {
     offset?: number
   ): Promise<Pick<ProcessedPost, T>[]>;
 
-  create(post: SoluvaPost): Promise<ProcessedPost>;
+  createFromRawPost(rawPost: RawPost): Promise<ProcessedPost>;
 
   updateById(
     id: string,
@@ -146,22 +146,32 @@ export class PostsRepository implements PostsRepositoryInterface {
     return (data ?? []) as unknown as Pick<ProcessedPost, T>[];
   }
 
-  async create(post: SoluvaPost): Promise<ProcessedPost> {
-    // stay flexible about author shape
-    const author =
-      typeof post.author === "object" ? (post.author as any).name : post.author;
-
-    const insertData = this.mapToSnakeCase({
-      ...post,
-      author,
-      metadata: (post as any).metadata ?? {},
-      status: "unprocessed",
-      updatedAt: new Date().toISOString(),
-    });
+  async createFromRawPost(rawPost: RawPost): Promise<ProcessedPost> {
+    const insertData = {
+      id: rawPost.id,
+      type: rawPost.subreddit?.display_name || 'reddit',
+      title: rawPost.title,
+      body: rawPost.body,
+      author: rawPost.author.name,
+      score: rawPost.score,
+      url: rawPost.url,
+      status: 'processing' as const,
+      processing_started_at: new Date().toISOString(),
+      metadata: {
+        ...rawPost.metadata,
+        numComments: rawPost.numComments,
+        permalink: rawPost.permalink,
+        createdUtc: rawPost.createdUtc,
+        isNsfw: rawPost.isNsfw,
+        subreddit: rawPost.subreddit,
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
 
     const { data, error } = await this.supabase
       .from(this.table)
-      .upsert(insertData as any, { onConflict: "id" })
+      .upsert(insertData, { onConflict: "id" })
       .select("*")
       .single();
 

@@ -1,13 +1,14 @@
 import { createQueue } from "@/lib/scheduler";
+import { RawPost } from "@/types";
 
 export const orchestratorQueue = createQueue("orchestrator");
 
 export interface PostJob {
-  postId: string;
+  rawPost: RawPost;
 }
 
-export async function addPostToQueue(postId: string): Promise<void> {
-  await orchestratorQueue.add("process-post", { postId });
+export async function addPostToQueue(rawPost: RawPost): Promise<void> {
+  await orchestratorQueue.add("process-post", { rawPost });
 }
 
 export async function getQueueStatus() {

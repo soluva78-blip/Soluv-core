@@ -119,9 +119,16 @@ export class ClusteringService {
 
         if (merged.has(secondCluster.id)) continue;
 
+        const centroid1 = typeof selectedCluster.centroid === 'string' 
+          ? JSON.parse(selectedCluster.centroid) 
+          : selectedCluster.centroid;
+        const centroid2 = typeof secondCluster.centroid === 'string' 
+          ? JSON.parse(secondCluster.centroid) 
+          : secondCluster.centroid;
+          
         const sim = embeddingsService.calculateCosineSimilarity(
-          selectedCluster.centroid,
-          secondCluster.centroid
+          centroid1,
+          centroid2
         );
 
         if (sim > similarityThreshold) {

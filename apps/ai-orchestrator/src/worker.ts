@@ -1,43 +1,44 @@
-import "dotenv/config";
+import { logger } from "@/lib/logger";
 import { createWorker } from "@/lib/scheduler";
 import { supabase } from "@/lib/supabase";
-import { OrchestratorService } from "@/services/orchestrator.service";
-import { logger } from "@/lib/logger";
 import { PostJob } from "@/queues/orchestrator.queue";
+import { OrchestratorService } from "@/services/orchestrator.service";
+import { Job, Worker } from "bullmq";
+import "dotenv/config";
+import { QueueService } from "./services/queue.service";
 
 const orchestrator = new OrchestratorService(supabase);
 
-const worker = createWorker("orchestrator", async (job) => {
-  const { postId } = job.data as PostJob;
-  logger.info(`Worker picked job for post ${postId}`);
+export class WorkerService {
+  private worker: Worker;
 
-  try {
-    await orchestrator.processPost(postId);
-    logger.info(`✅ Successfully processed post ${postId}`);
-  } catch (error) {
-    logger.error(`❌ Failed to process post ${postId}:`, error);
-    throw error;
+  constructor(private queueService: QueueService) {
+    this.worker = createWorker("orchestrator", async (job: Job) => {
+      const { rawPost } = job.data as PostJob;
+      logger.info(`Worker picked job for post ${rawPost.id}`);
+
+      try {
+        await orchestrator.processPost(rawPost);
+        logger.info(`✅ Successfully processed post ${rawPost.id}`);
+      } catch (error: any) {
+        logger.error(`❌ Failed to process post ${rawPost.id}:`, { error });
+        throw error;
+      }
+    });
+
+    this.worker.on("completed", async (job) => {
+      logger.info(`✅ Job ${job.id} completed for post ${job.data.rawPost.id}`);
+      await this.queueService.checkAndRefillQueue();
+    });
+
+    this.worker.on("failed", (job, err) => {
+      logger.error(`❌ Job ${job?.id} failed: ${err.message}`);
+    });
+
+    this.worker.on("error", (error) => {
+      logger.error("Worker error:", { error });
+    });
+
+    logger.info("🚀 Orchestrator worker running...");
   }
-});
-
-// Handle worker lifecycle / errors
-worker.on("completed", (job) => {
-  logger.info(`✅ Job ${job.id} completed for post ${job.data.postId}`);
-});
-
-worker.on("failed", (job, err) => {
-  logger.error(`❌ Job ${job?.id} failed: ${err.message}`);
-});
-
-worker.on("error", (error) => {
-  logger.error("Worker error:", error);
-});
-
-// Graceful shutdown
-process.on("SIGINT", async () => {
-  logger.info("Shutting down worker...");
-  await worker.close();
-  process.exit(0);
-});
-
-logger.info("🚀 Orchestrator worker running...");
+}

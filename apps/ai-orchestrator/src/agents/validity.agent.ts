@@ -30,11 +30,12 @@ export class ValidityAgent {
       // --- LLM-based validity check ---
       const prompt = `Analyze if this post contains a valid, actionable problem or question:
       
-Title: ${title}
-Body: ${body}
+        Title: ${title}
+        Body: ${body}
 
-Respond strictly in valid JSON format:
-{"isValid": boolean, "reason": "string explanation"}`;
+        Respond strictly in valid JSON format:
+        {"isValid": boolean, "reason": "string explanation"}
+      `;
 
       const llmResult = await llmClient.generateCompletion(prompt, 150);
 
@@ -49,7 +50,7 @@ Respond strictly in valid JSON format:
 
       let parsed: { isValid: boolean; reason: string };
       try {
-        parsed = JSON.parse(llmResult.data as string);
+        parsed = this.jsonParser(llmResult.data);
       } catch {
         parsed = { isValid: false, reason: "LLM returned invalid JSON" };
       }
@@ -74,6 +75,49 @@ Respond strictly in valid JSON format:
       };
     }
   }
+
+  private jsonParser = (
+    input: string
+  ): { isValid: boolean; reason: string } => {
+    if (!input) {
+      throw new Error("Input string is empty");
+    }
+
+    try {
+      let cleanedAnalysis = input.trim();
+
+      // Remove markdown code blocks if present
+      cleanedAnalysis = cleanedAnalysis
+        .replace(/```json\s*/, "")
+        .replace(/```\s*$/, "");
+
+      // Find JSON object in the response
+      const jsonMatch = cleanedAnalysis.match(/\{[\s\S]*\}/);
+
+      const parsedResult = jsonMatch
+        ? JSON.parse(jsonMatch[0])
+        : JSON.parse(cleanedAnalysis);
+
+      // Validate the parsed result has required properties
+      if (
+        typeof parsedResult.isValid !== "boolean" ||
+        typeof parsedResult.reason !== "string"
+      ) {
+        throw new Error("Invalid JSON structure: missing required properties");
+      }
+
+      return parsedResult as { isValid: boolean; reason: string };
+    } catch (parseError) {
+      // Log error details for debugging
+      console.error(
+        "JSON parsing error:",
+        parseError instanceof Error ? parseError.message : "Unknown error"
+      );
+      console.error("Failed input:", input);
+
+      throw parseError;
+    }
+  };
 
   private buildResult(
     isValid: boolean,
