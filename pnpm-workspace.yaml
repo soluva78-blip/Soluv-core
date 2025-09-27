@@ -1,5 +1,4 @@
 packages:
   - "apps/*"
   - "apps/collectors/*"
-  - "apps/ai-agents/*"
   - "packages/*"

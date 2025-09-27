@@ -1,10 +1,5 @@
 import { SupabaseClient } from "@/lib/supabase";
-import {
-  PostClassificationType,
-  ProcessedPost,
-  RawPost,
-  SentimentLabelType,
-} from "@/types/index";
+import { PostClassificationType, ProcessedPost, RawPost } from "@/types/index";
 
 interface PostsRepositoryInterface {
   findById<T extends keyof ProcessedPost>(
@@ -35,12 +30,6 @@ interface PostsRepositoryInterface {
     errorMessage?: string
   ): Promise<void>;
 
-  updateValidityCheck(
-    id: string,
-    isValid: boolean,
-    explanation: string,
-    label: string
-  ): Promise<void>;
   updateClassification(
     id: string,
     classification: string,
@@ -52,15 +41,8 @@ interface PostsRepositoryInterface {
     embedding: number[],
     keywords: string[]
   ): Promise<void>;
-  updateSentiment(id: string, label: string, score: number): Promise<void>;
   updateCategory(id: string, categoryId: number): Promise<void>;
   updateCluster(id: string, clusterId: number): Promise<void>;
-  updateSpamPiiFlags(
-    id: string,
-    isSpam: boolean,
-    hasPii: boolean,
-    notes?: string
-  ): Promise<void>;
 }
 
 export class PostsRepository implements PostsRepositoryInterface {
@@ -151,10 +133,9 @@ export class PostsRepository implements PostsRepositoryInterface {
     const insertData = {
       id: rawPost.id,
       source: rawPost.subreddit?.display_name || "reddit",
-      title: rawPost.title,
+      problem_statement: rawPost.title,
       body: rawPost.body,
       author: rawPost.author.name,
-      score: rawPost.score,
       url: rawPost.url,
       status: "processing" as const,
       processing_started_at: new Date().toISOString(),
@@ -181,20 +162,18 @@ export class PostsRepository implements PostsRepositoryInterface {
   }
 
   async createDerivedProblem(
-    rawPost: RawPost & { description: string; isValid: boolean }
+    rawPost: RawPost & { description: string }
   ): Promise<ProcessedPost> {
     const insertData = {
       id: `${rawPost.id} - Derived- ${crypto.randomUUID()}`,
       source: rawPost.subreddit?.display_name || "reddit",
-      title: rawPost.title,
+      problem_statement: rawPost.title,
       body: rawPost.body,
       author: rawPost.author.name,
-      score: rawPost.score,
       url: rawPost.url,
       status: "processing" as const,
       processing_started_at: new Date().toISOString(),
       description: rawPost.description,
-      is_valid: rawPost.isValid,
       metadata: {
         ...rawPost.metadata,
         numComments: rawPost.numComments,
@@ -299,20 +278,6 @@ export class PostsRepository implements PostsRepositoryInterface {
     }
   }
 
-  async updateValidityCheck(
-    id: string,
-    isValid: boolean,
-    explanation?: string,
-    label?: string
-  ): Promise<void> {
-    await this.updateById(id, {
-      is_valid: isValid,
-      description: explanation,
-      title: label,
-      updated_at: new Date().toISOString(),
-    });
-  }
-
   async updateClassification(
     id: string,
     classification: PostClassificationType,
@@ -331,24 +296,10 @@ export class PostsRepository implements PostsRepositoryInterface {
     embedding: number[],
     keywords: string[]
   ): Promise<void> {
-    // Supabase accepts JS arrays for pgvector columns when using the service role key.
-    // If your Supabase client complains about typing in TS for rpc calls, cast to unknown.
     await this.updateById(id, {
-      summary,
+      description: summary,
       embedding: embedding as unknown as any,
       keywords,
-      updated_at: new Date().toISOString(),
-    });
-  }
-
-  async updateSentiment(
-    id: string,
-    label: SentimentLabelType,
-    score: number
-  ): Promise<void> {
-    await this.updateById(id, {
-      sentiment_label: label,
-      sentiment_score: score,
       updated_at: new Date().toISOString(),
     });
   }
@@ -360,14 +311,9 @@ export class PostsRepository implements PostsRepositoryInterface {
     });
   }
 
-  async updateBusinessIdea(
-    id: string,
-    name: string,
-    post_type: "problem" | "solution"
-  ): Promise<void> {
+  async updateBusinessIdea(id: string, name: string): Promise<void> {
     await this.updateById(id, {
-      name,
-      post_type,
+      problem_statement: name,
       updated_at: new Date().toISOString(),
     });
   }
@@ -375,20 +321,6 @@ export class PostsRepository implements PostsRepositoryInterface {
   async updateCluster(id: string, clusterId: number): Promise<void> {
     await this.updateById(id, {
       cluster_id: clusterId,
-      updated_at: new Date().toISOString(),
-    });
-  }
-
-  async updateSpamPiiFlags(
-    id: string,
-    isSpam: boolean,
-    hasPii: boolean,
-    notes?: string
-  ): Promise<void> {
-    await this.updateById(id, {
-      is_spam: isSpam,
-      has_pii: hasPii,
-      moderation_notes: notes ?? null,
       updated_at: new Date().toISOString(),
     });
   }

@@ -20,7 +20,6 @@ async function bootstrap() {
   await queueService.checkAndRefillQueue();
 }
 
-// Main entry point - can be extended to include API server, admin interface, etc.
 async function main() {
   await bootstrap();
 

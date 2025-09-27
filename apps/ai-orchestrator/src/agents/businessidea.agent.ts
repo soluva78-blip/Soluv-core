@@ -6,7 +6,10 @@ import { metricsCollector } from "@/utils/metrics";
 export class BusinessIdeaAgent {
   private readonly agentName = "business-idea";
 
-  async generateIdea(title: string, body: string): Promise<AgentResult> {
+  async generateIdea(
+    title: string,
+    body: string
+  ): Promise<AgentResult<{ businessIdea: string }>> {
     const startTime = Date.now();
 
     try {
@@ -20,20 +23,20 @@ export class BusinessIdeaAgent {
         );
       }
 
-      const prompt = `Analyze the following post and determine whether it is primarily a problem statement or a solution suggestion. 
-      Then, paraphrase it into a concise business idea (1–2 lines only) that stays within the same context.
-      
-      Title: ${title}
-      Body: ${body}
-      
-      Output strictly in valid JSON format:
-      {
-        "type": "problem" | "solution",
-        "businessIdea": "string (short, 1–2 lines only, e.g. 'Build an AI-powered health app using gamification to improve fitness engagement.')"
-      }
-      `;
-      
-      const llmResult = await llmClient.generateCompletion(prompt, 200);
+      const prompt = `Analyze the following user post. 
+Identify the main pain point being described (not what they already did). 
+Then suggest ONE concise business idea (1 line) that could help a wide group of users who face this same pain point. 
+
+Return ONLY valid JSON in this format:
+{
+  "businessIdea": "string (a single one-line business idea suggestion)"
+}
+
+Title: ${title}
+Body: ${body}
+`;
+
+      const llmResult = await llmClient.generateCompletion(prompt, 150);
 
       if (!llmResult.success) {
         this.recordMetrics(startTime, 0, false);
@@ -44,15 +47,13 @@ export class BusinessIdeaAgent {
         };
       }
 
-      let parsed: { type: "problem" | "solution"; businessIdea: string };
+      let parsed: { businessIdea: string };
       try {
         parsed = jsonParser(llmResult.data, {
-          type: ["problem", "solution"],
           businessIdea: "string",
         });
       } catch {
         parsed = {
-          type: "problem",
           businessIdea: "LLM returned invalid JSON",
         };
       }
@@ -89,7 +90,6 @@ export class BusinessIdeaAgent {
     const result: AgentResult = {
       success: true,
       data: {
-        type: successFlag ? "problem" : "solution",
         businessIdea: businessIdea || message,
       },
       tokensUsed,

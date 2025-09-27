@@ -199,28 +199,17 @@ export type Database = {
           embedding: string | null
           error_message: string | null
           failed_at: string | null
-          has_pii: boolean | null
           id: string
-          is_spam: boolean | null
-          is_valid: boolean | null
           keywords: string[] | null
           metadata: Json | null
-          moderation_notes: string | null
-          name: string | null
-          post_type: Database["public"]["Enums"]["post_type"] | null
+          problem_statement: string | null
           processed_at: string | null
           processing_started_at: string | null
           retry_count: number | null
-          score: number | null
-          sentiment_label: Database["public"]["Enums"]["sentiment_label"] | null
-          sentiment_score: number | null
           source: string
           status: Database["public"]["Enums"]["post_status"] | null
-          summary: string | null
-          title: string
           updated_at: string | null
           url: string
-          validity_reason: string | null
         }
         Insert: {
           author: string
@@ -236,30 +225,17 @@ export type Database = {
           embedding?: string | null
           error_message?: string | null
           failed_at?: string | null
-          has_pii?: boolean | null
           id: string
-          is_spam?: boolean | null
-          is_valid?: boolean | null
           keywords?: string[] | null
           metadata?: Json | null
-          moderation_notes?: string | null
-          name?: string | null
-          post_type?: Database["public"]["Enums"]["post_type"] | null
+          problem_statement?: string | null
           processed_at?: string | null
           processing_started_at?: string | null
           retry_count?: number | null
-          score?: number | null
-          sentiment_label?:
-            | Database["public"]["Enums"]["sentiment_label"]
-            | null
-          sentiment_score?: number | null
           source: string
           status?: Database["public"]["Enums"]["post_status"] | null
-          summary?: string | null
-          title: string
           updated_at?: string | null
           url: string
-          validity_reason?: string | null
         }
         Update: {
           author?: string
@@ -275,30 +251,17 @@ export type Database = {
           embedding?: string | null
           error_message?: string | null
           failed_at?: string | null
-          has_pii?: boolean | null
           id?: string
-          is_spam?: boolean | null
-          is_valid?: boolean | null
           keywords?: string[] | null
           metadata?: Json | null
-          moderation_notes?: string | null
-          name?: string | null
-          post_type?: Database["public"]["Enums"]["post_type"] | null
+          problem_statement?: string | null
           processed_at?: string | null
           processing_started_at?: string | null
           retry_count?: number | null
-          score?: number | null
-          sentiment_label?:
-            | Database["public"]["Enums"]["sentiment_label"]
-            | null
-          sentiment_score?: number | null
           source?: string
           status?: Database["public"]["Enums"]["post_status"] | null
-          summary?: string | null
-          title?: string
           updated_at?: string | null
           url?: string
-          validity_reason?: string | null
         }
         Relationships: []
       }

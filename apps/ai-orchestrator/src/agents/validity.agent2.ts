@@ -12,7 +12,6 @@ export interface ProblemClassificationInput {
 export interface DerivedProblem {
   problemStatement: string;
   label: string;
-  industry: string;
   explanation: string;
 }
 
@@ -20,7 +19,6 @@ export interface ProblemClassifierModelOutput {
   isProblem: boolean;
   explanation: string;
   label: string;
-  industry: string;
   derivedProblems?: DerivedProblem[];
 }
 
@@ -28,7 +26,6 @@ interface InitialClassificationOutput {
   isProblem: boolean;
   explanation: string;
   label: string;
-  industry: string;
   potential: "none" | "existent";
 }
 
@@ -97,7 +94,6 @@ export class ValidityAgent {
         isProblem: initial.data.isProblem,
         explanation: initial.data.explanation,
         label: initial.data.label,
-        industry: initial.data.industry,
       };
 
       // 2) If multiple problems might exist, derive them and cross-check
@@ -233,7 +229,6 @@ export class ValidityAgent {
         isProblem: original.isProblem,
         explanation: original.explanation,
         label: original.label,
-        industry: original.industry,
       };
     }
 
@@ -243,7 +238,6 @@ export class ValidityAgent {
       isProblem: true,
       explanation: `Multiple problems identified. Primary: ${primary?.problemStatement}`,
       label: primary?.label,
-      industry: primary?.industry,
     };
   }
 
@@ -277,7 +271,6 @@ export class ValidityAgent {
         isProblem: isValid,
         explanation: reason,
         label: reason,
-        industry: "General",
       },
       tokensUsed,
       latencyMs,

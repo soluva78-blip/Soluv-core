@@ -3,16 +3,16 @@ import { CategoryAgent } from "@/agents/category.agent";
 import { ClassificationAgent } from "@/agents/classification.agent";
 import { ClusterAgent } from "@/agents/cluster.agent";
 import { SemanticAgent } from "@/agents/semantic.agent";
-import { SentimentAgent } from "@/agents/sentiment.agent";
 import { SpamAgent } from "@/agents/spam.agent";
 import { DerivedProblem, ValidityAgent } from "@/agents/validity.agent2";
+import { logger } from "@/lib/logger";
+import { SupabaseClient } from "@/lib/supabase";
 import { CategoriesRepository } from "@/repositories/categories.repository";
 import { ClustersRepository } from "@/repositories/clusters.repository";
 import { MentionsRepository } from "@/repositories/mentions.repository";
 import { PostsRepository } from "@/repositories/posts.repository";
 import { AgentResult, RawPost } from "@/types";
 import { metricsCollector } from "@/utils/metrics";
-import { SupabaseClient } from "@supabase/supabase-js";
 
 export interface OrchestrationState {
   postId: string;
@@ -21,7 +21,6 @@ export interface OrchestrationState {
     isProblem: boolean;
     explanation: string;
     label: string;
-    industry: string;
     derivedProblems?: DerivedProblem[];
   }>;
   classificationResult?: AgentResult<{
@@ -33,17 +32,15 @@ export interface OrchestrationState {
     embedding: number[];
     keywords: string[];
   }>;
-  sentimentResult?: AgentResult<{
-    sentiment: string;
-    score: number;
-    confidence: number;
-  }>;
   categoryResult?: AgentResult<{ categoryId: number; categoryName: string }>;
   clusterResult?: AgentResult<{ clusterId: number; isNewCluster: boolean }>;
   spamResult?: AgentResult<{
     isSpam: boolean;
     hasPii: boolean;
     notes?: string;
+  }>;
+  businessIdeaResult?: AgentResult<{
+    businessIdea: string;
   }>;
   error?: string;
 }
@@ -57,7 +54,6 @@ export class OrchestratorService {
   private validityAgent: ValidityAgent;
   private classificationAgent: ClassificationAgent;
   private semanticAgent: SemanticAgent;
-  private sentimentAgent: SentimentAgent;
   private categoryAgent: CategoryAgent;
   private clusterAgent: ClusterAgent;
   private spamAgent: SpamAgent;
@@ -72,7 +68,6 @@ export class OrchestratorService {
     this.validityAgent = new ValidityAgent(this.categoriesRepo);
     this.classificationAgent = new ClassificationAgent();
     this.semanticAgent = new SemanticAgent();
-    this.sentimentAgent = new SentimentAgent();
     this.categoryAgent = new CategoryAgent(this.categoriesRepo);
     this.clusterAgent = new ClusterAgent(this.clustersRepo);
     this.spamAgent = new SpamAgent();
@@ -114,12 +109,16 @@ export class OrchestratorService {
       console.error(`Failed post ${postId}:`, error);
 
       // Mark as failed
-      await this.postsRepo.updateById(postId, {
-        status: "failed",
-        failed_at: new Date().toISOString(),
-        error_message: (error as Error).message,
-        updated_at: new Date().toISOString(),
-      });
+      await this.postsRepo.updateById(
+        postId,
+        {
+          status: "failed",
+          failed_at: new Date().toISOString(),
+          error_message: (error as Error).message,
+          updated_at: new Date().toISOString(),
+        },
+        true
+      );
 
       metricsCollector.recordError();
       throw error;
@@ -137,10 +136,9 @@ export class OrchestratorService {
     state = { ...state, ...spamResult };
 
     if (this.shouldStop(state)) {
-      console.log(
+      return logger.info(
         `Stopping processing for post ${rawPost.id} - spam/PII detected`
       );
-      return;
     }
 
     // Step 2: Validity Check
@@ -148,32 +146,19 @@ export class OrchestratorService {
     state = { ...state, ...validityResult };
 
     if (this.shouldStop(state)) {
-      console.log(`Stopping processing for post ${rawPost.id} - not valid`);
-      return;
+      return logger.info(
+        `Stopping processing for post ${rawPost.id} - not valid`
+      );
     }
 
     // Create initial database record for tracking
     await this.postsRepo.createFromRawPost(rawPost);
-    const { spamResult: spam } = spamResult;
-    await this.postsRepo.updateSpamPiiFlags(
-      rawPost.id,
-      spam?.data?.isSpam ?? false,
-      spam?.data?.hasPii ?? false,
-      spam?.data?.notes
-    );
+
     const { validityResult: validity } = validityResult;
     const derivedProblems = validity?.data?.derivedProblems ?? [];
 
     if (derivedProblems && derivedProblems.length > 0) {
-      // Process each derived problem through the full workflow
       await this.processDerivedProblems(derivedProblems, rawPost);
-    } else {
-      await this.postsRepo.updateValidityCheck(
-        rawPost.id,
-        true,
-        validity?.data?.explanation,
-        validity?.data?.label
-      );
     }
 
     // Step 3: Classification
@@ -183,10 +168,6 @@ export class OrchestratorService {
     // Step 4: Semantic Analysis
     const semanticResult = await this.semanticAnalysis(state);
     state = { ...state, ...semanticResult };
-
-    // Step 5: Sentiment Analysis
-    const sentimentResult = await this.sentimentAnalysis(state);
-    state = { ...state, ...sentimentResult };
 
     const businessIdeaResult = await this.businessIdeaAnalysis(state);
     state = { ...state, ...businessIdeaResult };
@@ -288,26 +269,6 @@ export class OrchestratorService {
     return { semanticResult: result };
   }
 
-  private async sentimentAnalysis(
-    state: OrchestrationState
-  ): Promise<Partial<OrchestrationState>> {
-    const { rawPost } = state;
-    if (!rawPost) throw new Error("Raw post not provided");
-
-    const result = await this.sentimentAgent.analyzeSentiment(
-      rawPost.title,
-      rawPost.body
-    );
-    if (result.success) {
-      await this.postsRepo.updateSentiment(
-        rawPost.id,
-        result.data.sentiment,
-        result.data.score
-      );
-    }
-    return { sentimentResult: result };
-  }
-
   private async businessIdeaAnalysis(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
@@ -318,14 +279,14 @@ export class OrchestratorService {
       rawPost.title,
       rawPost.body
     );
-    if (result.success) {
+
+    if (result.success && result.data?.businessIdea) {
       await this.postsRepo.updateBusinessIdea(
         rawPost.id,
-        result.data.businessIdea,
-        result.data.type
+        result?.data?.businessIdea
       );
     }
-    return { sentimentResult: result };
+    return { businessIdeaResult: result };
   }
 
   private async categoryAssignment(
@@ -369,19 +330,14 @@ export class OrchestratorService {
   private async recordMention(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
-    const { rawPost, clusterResult, categoryResult, sentimentResult } = state;
+    const { rawPost, clusterResult, categoryResult } = state;
     if (!rawPost) throw new Error("Raw post not provided");
 
-    if (
-      clusterResult?.success &&
-      categoryResult?.success &&
-      sentimentResult?.success
-    ) {
+    if (clusterResult?.success && categoryResult?.success) {
       await this.mentionsRepo.create(
         rawPost.id,
         clusterResult.data?.clusterId!,
-        categoryResult.data?.categoryId!,
-        sentimentResult.data?.score
+        categoryResult.data?.categoryId!
       );
     }
     return {};
@@ -400,7 +356,6 @@ export class OrchestratorService {
           ...originalPost,
           description: problem.explanation,
           title: problem.label,
-          isValid: true,
         });
 
         // Create a virtual RawPost for the derived problem
@@ -421,7 +376,6 @@ export class OrchestratorService {
               isProblem: true,
               explanation: problem.explanation,
               label: problem.label,
-              industry: problem.industry,
             },
             latencyMs: 0,
           },
@@ -434,10 +388,8 @@ export class OrchestratorService {
         const semanticResult = await this.semanticAnalysis(derivedState);
         derivedState = { ...derivedState, ...semanticResult };
 
-        const sentimentResult = await this.sentimentAnalysis(derivedState);
-        derivedState = { ...derivedState, ...sentimentResult };
-
-        const businessIdeaResult = await this.businessIdeaAnalysis(derivedState);
+        const businessIdeaResult =
+          await this.businessIdeaAnalysis(derivedState);
         derivedState = { ...derivedState, ...businessIdeaResult };
 
         const categoryResult = await this.categoryAssignment(derivedState);
@@ -450,7 +402,10 @@ export class OrchestratorService {
 
         console.log(`Completed processing derived problem: ${problem.label}`);
       } catch (error) {
-        console.error(`Failed to process derived problem ${problem.label}:`, error);
+        console.error(
+          `Failed to process derived problem ${problem.label}:`,
+          error
+        );
       }
     }
   }
