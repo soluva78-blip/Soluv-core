@@ -16,7 +16,7 @@ const fetchQueue = new Queue(config.queue.name, {
   },
 });
 
-export async function scheduleSubredditFetch(subreddit: string, query: string) {
-  const job = await fetchQueue.add("fetch", { subreddit, query });
-  logger.info(`"📥 Job added:", ${job.id}, ${subreddit}`);
+export async function scheduleSubredditFetch(subreddits: string[], query: string) {
+  const job = await fetchQueue.add("fetch", { subreddits, query });
+  logger.info(`"📥 Job added:", ${job.id}, ${subreddits}`);
 }

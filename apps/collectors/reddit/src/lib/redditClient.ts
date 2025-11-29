@@ -9,6 +9,6 @@ const redditClient = new Snoowrap({
   password: config.reddit.password,
 });
 
-redditClient.config({ requestDelay: 1000 });
+redditClient.config({ requestDelay: 50 });
 
 export { redditClient };

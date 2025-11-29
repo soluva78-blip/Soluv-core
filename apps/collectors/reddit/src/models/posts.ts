@@ -24,7 +24,7 @@ export interface IPost extends Document {
   score: number;
   url: string;
   metadata: Metadata;
-  status: "unprocessed" | 'processed';
+  status: "unprocessed" | "processed";
 }
 
 const detailedScoreBreakdownSchema = new Schema<DetailedScoreBreakdown>(
@@ -52,14 +52,22 @@ const metadataSchema = new Schema<Metadata>(
 
 const postSchema = new Schema<IPost>(
   {
+    id: { type: String, required: true },
+    type: { type: String, required: false },
     title: { type: String, required: true },
     body: { type: String, required: true },
-    author: { type: String, required: true },
+    author: { type: String, required: false },
     score: { type: Number, default: 0 },
     url: { type: String, required: true },
-    metadata: { type: metadataSchema, required: true },
+    metadata: { type: metadataSchema, required: false },
+    status: {
+      type: String,
+      enum: ["unprocessed", "processed"],
+      default: "unprocessed",
+    },
   },
   { timestamps: true }
 );
+postSchema.index({ id: 1 }, { unique: true });
 
 export const Post = model<IPost>("Post", postSchema, "posts");

@@ -23,7 +23,6 @@ const envSchema = Joi.object()
     REDDIT_PASSWORD: Joi.string().required(),
 
     REDDIT_SUBREDDITS: Joi.string().required(),
-    REDDIT_MIN_SCORE: Joi.number().default(30),
     REDDIT_FETCH_LIMIT: Joi.number().default(25),
     REDDIT_SORT: Joi.string().valid("hot", "top", "new").default("top"),
     REDDIT_TIMEFRAME: Joi.string().valid("hour", "day", "week").default("day"),
@@ -66,7 +65,6 @@ export const config = Object.freeze({
 
   redditFetchConfig: {
     subreddits: validatedEnvVars.REDDIT_SUBREDDITS?.split(","),
-    minScore: validatedEnvVars.REDDIT_MIN_SCORE,
     fetchLimit: validatedEnvVars.REDDIT_FETCH_LIMIT,
     sort: validatedEnvVars.REDDIT_SORT,
     timeframe: validatedEnvVars.REDDIT_TIMEFRAME,

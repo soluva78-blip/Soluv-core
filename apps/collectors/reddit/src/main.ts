@@ -64,7 +64,7 @@ const main = async (job: Job) => {
 
     const newPosts = freshPosts.map(convertToSoluvaPost);
 
-    const seenKey = "seen_posts";
+    const seenKey = `seen_posts:${subreddit}`;
 
     // Only keep unseen posts
     const unseenPosts = [];
@@ -83,35 +83,48 @@ const main = async (job: Job) => {
 
 const streamNewPosts = async (job: Job) => {
   const { subreddit } = job.data as { subreddit: string; query: string };
+  console.log({ subreddit });
 
   return limiter.schedule(async () => {
     let storedTotal = 0;
     let fetchedTotal = 0;
 
-    for await (const batch of redditService.fetchNewPostsStream(
+    const lastFetched = parseInt(
+      (await redisClient.get(LAST_FETCH_KEY(subreddit))) || "0",
+      10
+    );
+
+    for await (const batch of redditService.fetchNewPostsStreamContinuous(
       subreddit,
-      50
+      50,
+      60_000,
+      1_000,
+      lastFetched
     )) {
       fetchedTotal += batch.length;
+
+      console.log({ batch: batch.length, subreddit, val: batch[0]?.id });
 
       const freshPosts = await filterNewPosts(subreddit, batch);
       const newPosts = freshPosts.map(convertToSoluvaPost);
 
-      const seenKey = "seen_posts";
+      const seenKey = `seen_posts:${subreddit}`;
       const unseenPosts = [];
 
-      for (const post of newPosts) {
-        const isNew = await redisClient.sadd(seenKey, post?.id!);
-        if (isNew) unseenPosts.push(post);
-      }
+      // for (const post of newPosts) {
+      //   const isNew = await redisClient.sadd(seenKey, post?.id!);
+      //   if (isNew) unseenPosts.push(post);
+      // }
 
-      if (unseenPosts.length > 0) {
-        await Post.insertMany(unseenPosts, { ordered: false });
-        storedTotal += unseenPosts.length;
-      }
+      // if (unseenPosts.length > 0) {
+      //   await Post.insertMany(unseenPosts, { ordered: false });
+      //   storedTotal += unseenPosts.length;
+      // }
     }
 
     await redisClient.incrby(THROUGHPUT_KEY, fetchedTotal);
+
+    console.log({ fetchedTotal, subreddit });
 
     return { subreddit, fetched: fetchedTotal, stored: storedTotal };
   });

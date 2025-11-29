@@ -1,10 +1,13 @@
 import mongoose from "mongoose";
-
 const connectDB = async (): Promise<void> => {
   try {
     const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/myapp";
 
-    await mongoose.connect(mongoUri);
+    // await mongoose.connect(mongoUri);
+
+    await mongoose.connect(mongoUri, {
+      dbName: "soluvaDB",
+    });
 
     console.log("✅ MongoDB connected successfully");
   } catch (error) {

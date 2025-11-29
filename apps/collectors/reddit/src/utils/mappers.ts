@@ -76,7 +76,7 @@ export const mapSubmissionToRawPost = (
     name: submission.name,
     title: submission.title,
     selftext: submission.selftext || "",
-    author: submission.author.name,
+    author: submission.author?.name,
     score: submission.score,
     num_comments: submission.num_comments,
     subreddit: submission.subreddit.display_name,

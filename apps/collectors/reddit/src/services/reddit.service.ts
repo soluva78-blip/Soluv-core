@@ -7,9 +7,26 @@ import Parser from "rss-parser";
 import * as Snoowrap from "snoowrap";
 import { ProblemKeywordFilter } from "../filters/problemKeywordFilter";
 
+interface OptimizedRunProps {
+  subreddits: string[];
+  query?: string;
+  options?: {
+    perSubredditLimit?: number;
+    pageSize?: number;
+    timeBudgetMs?: number;
+    concurrency?: number;
+  };
+}
 export class RedditService {
   constructor(private readonly client: Snoowrap) {}
   private parser = new Parser<object, RedditRssItem>();
+  private apiLimiter = new Bottleneck({
+    reservoir: 600,
+    reservoirRefreshAmount: 600,
+    reservoirRefreshInterval: 60 * 1000,
+    maxConcurrent: 10,
+    minTime: 100,
+  });
 
   private rssLimiter = new Bottleneck({
     minTime: 5000, // 1 request every 5s
@@ -38,6 +55,41 @@ export class RedditService {
       yield submissions.map(convertToRedditPost);
 
       after = submissions[submissions.length - 1]?.name;
+    }
+  }
+
+  async *fetchNewPostsStreamContinuous(
+    subreddit: string,
+    batchSize = 50,
+    timeBudgetMs = 60000,
+    pollIntervalMs = 1000,
+    lastFetchedThreshold?: number
+  ): AsyncGenerator<RedditPost[]> {
+    const end = Date.now() + timeBudgetMs;
+    while (Date.now() < end) {
+      let after: string | undefined;
+      let hasMore = true;
+      while (hasMore && Date.now() < end) {
+        const submissions = await this.fetchNewPostsFromSubreddit(
+          subreddit,
+          batchSize,
+          after
+        );
+        if (submissions.length === 0) {
+          hasMore = false;
+          break;
+        }
+        // Early exit: if we reached older than last fetched, stop inner paging
+        const lastCreated = submissions[submissions.length - 1]?.created_utc;
+        if (lastFetchedThreshold && lastCreated && lastCreated <= lastFetchedThreshold) {
+          hasMore = false;
+        }
+        yield submissions.map(convertToRedditPost);
+        after = submissions[submissions.length - 1]?.name;
+      }
+      if (Date.now() < end) {
+        await this.delay(pollIntervalMs);
+      }
     }
   }
 
@@ -178,5 +230,84 @@ export class RedditService {
     });
     // @ts-expect-error: type mismatch workaround
     return searchResults.map((post) => post);
+  }
+
+  async optimizedRun(props: OptimizedRunProps): Promise<RedditPost[]> {
+    const { subreddits, options, query } = props;
+    const perSubredditLimit = options?.perSubredditLimit ?? 2000;
+    const pageSize = options?.pageSize ?? 100;
+    const timeBudgetMs = options?.timeBudgetMs ?? 60000;
+    const concurrency = options?.concurrency ?? 20;
+    this.apiLimiter.updateSettings({ maxConcurrent: concurrency });
+
+    const start = Date.now();
+
+    const tasks = subreddits.map((subreddit) =>
+      this.apiLimiter.schedule(async () => {
+        try {
+          const results: RedditPost[] = [];
+
+          // Run search, RSS, and paged concurrently
+          const searchPromise = query
+            ? this.apiLimiter.schedule(async () => {
+                const raw = await this.fetchPostsBySearch(subreddit, query);
+                return raw.map(convertToRedditPost);
+              })
+            : Promise.resolve<RedditPost[]>([]);
+
+          const rssPromise = this.rssLimiter.schedule(async () => {
+            return await this.fetchRedditPostViaRssFeed(subreddit);
+          });
+
+          const pagedPromise = this.apiLimiter.schedule(async () => {
+            const collected: RedditPost[] = [];
+            let after: string | undefined;
+            while (
+              Date.now() - start < timeBudgetMs &&
+              collected.length < perSubredditLimit
+            ) {
+              const batch = await this.client
+                .getSubreddit(subreddit)
+                .getNew({ limit: pageSize, after });
+              const mapped = batch.map(mapSubmissionToRawPost);
+              if (mapped.length === 0) break;
+              collected.push(...mapped.map(convertToRedditPost));
+              after = mapped[mapped.length - 1]?.name;
+            }
+            return collected;
+          });
+
+          const settled = await Promise.allSettled([
+            searchPromise,
+            rssPromise,
+            pagedPromise,
+          ]);
+
+          for (const s of settled) {
+            if (s.status === "fulfilled") results.push(...s.value);
+          }
+
+          return deduplicatePosts(results);
+        } catch (err: any) {
+          const msg = String(err?.message || "");
+          const isRate = err?.statusCode === 429 || /rate/i.test(msg);
+          if (isRate) {
+            await this.delay(2000);
+            const rss = await this.rssLimiter.schedule(async () => {
+              return await this.fetchRedditPostViaRssFeed(subreddit);
+            });
+            return rss;
+          }
+          return [];
+        }
+      })
+    );
+
+    const arrays = await Promise.all(tasks);
+    return arrays.flat();
+  }
+
+  private async delay(ms: number): Promise<void> {
+    await new Promise((r) => setTimeout(r, ms));
   }
 }
