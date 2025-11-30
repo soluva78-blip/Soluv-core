@@ -3,10 +3,10 @@ import * as dotenv from "dotenv";
 import cron from "node-cron";
 import { config } from "./config";
 import connectDB from "./config/db";
-import { optimizedWorkerJob } from "./file";
 import { logger } from "./lib/logger";
 import { redisClient } from "./lib/redisClient";
 import { scheduleSubredditFetch } from "./lib/scheduler";
+import { optimizedWorkerJob } from "./optimizedJob";
 
 dotenv.config();
 
@@ -49,7 +49,7 @@ export function shuffle<T>(array: T[]): T[] {
 const init = async () => {
   await connectDB();
 
-  cron.schedule("*/1 * * * *", async () => {
+  cron.schedule(config.queue.cronExpression, async () => {
     const shuffled = shuffle(config.redditFetchConfig.subreddits as string[]);
     const batch = shuffled.slice(0, 20);
     await scheduleSubredditFetch(batch, "problem");

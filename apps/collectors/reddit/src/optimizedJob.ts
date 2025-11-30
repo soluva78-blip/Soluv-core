@@ -4,6 +4,7 @@ import Bottleneck from "bottleneck";
 import IORedis from "ioredis";
 import Snoowrap, { Submission } from "snoowrap";
 import { shuffle } from ".";
+import { config } from "./config";
 import { Post } from "./models/posts";
 import { RedditPost } from "./types";
 import {
@@ -17,6 +18,13 @@ interface CollectorConfig {
   targetPostsPerRun: number;
   maxConcurrency: number;
   redisClient: IORedis;
+  credentials?: Array<{
+    userAgent: string;
+    clientId: string;
+    clientSecret: string;
+    username: string;
+    password: string;
+  }>;
 }
 
 type TimeFilters = "hour" | "day" | "week" | "month" | "year" | "all";
@@ -33,22 +41,34 @@ type TimeFilters = "hour" | "day" | "week" | "month" | "year" | "all";
  */
 export class OptimizedRedditCollector {
   private client: Snoowrap;
+  private clients: Snoowrap[] = [];
+  private clientIndex = 0;
+  private clientCooldownUntil: number[] = [];
   private limiter: Bottleneck;
   private redis: IORedis;
   private subreddits: string[];
-  private bloomFilterKey = "reddit:bloom";
   private seenSetKey = "reddit:seen_ids";
 
   constructor(private config: CollectorConfig) {
-    this.client = new Snoowrap({
-      userAgent: process.env.REDDIT_USER_AGENT!,
-      clientId: process.env.REDDIT_CLIENT_ID!,
-      clientSecret: process.env.REDDIT_CLIENT_SECRET!,
-      username: process.env.REDDIT_USERNAME!,
-      password: process.env.REDDIT_PASSWORD!,
+    const creds = this.loadCredentials();
+    this.redis = config.redisClient;
+    this.subreddits = config.subreddits;
+
+    this.clients = creds.map((c) => {
+      const redditInstance = new Snoowrap({
+        userAgent: c.userAgent,
+        clientId: c.clientId,
+        clientSecret: c.clientSecret,
+        username: c.username,
+        password: c.password,
+      });
+
+      redditInstance.config({ requestDelay: 50 });
+      return redditInstance;
     });
 
-    this.client.config({ requestDelay: 50 });
+    this.client = this.clients[0]!;
+    this.clientCooldownUntil = this.clients.map(() => 0);
 
     this.limiter = new Bottleneck({
       reservoir: 600,
@@ -57,9 +77,6 @@ export class OptimizedRedditCollector {
       maxConcurrent: config.maxConcurrency,
       minTime: 100,
     });
-
-    this.redis = config.redisClient;
-    this.subreddits = config.subreddits;
   }
 
   async warmRedisFromDatabase() {
@@ -304,7 +321,8 @@ export class OptimizedRedditCollector {
     const { subreddit, sort, limit = 25, timeFilter } = strategy;
 
     try {
-      const sub = this.client.getSubreddit(subreddit);
+      const cli = await this.nextClient();
+      const sub = cli.getSubreddit(subreddit);
       const options: any = { limit: Math.min(limit, 100) };
 
       // Only apply timeFilter for valid sorts
@@ -334,6 +352,47 @@ export class OptimizedRedditCollector {
       const rawPosts = submissions.map(mapSubmissionToRawPost);
       return rawPosts.map(convertToRedditPost);
     } catch (error) {
+      const msg = String((error as any)?.message || "");
+      if (/ratelimit/i.test(msg) || (error as any)?.statusCode === 429) {
+        this.cooldownCurrent(60_000);
+        for (let attempt = 0; attempt < this.clients.length - 1; attempt++) {
+          try {
+            const cli = await this.nextClient();
+            const sub = cli.getSubreddit(subreddit);
+            const options: any = { limit: Math.min(limit, 100) };
+            if ((sort === "top" || sort === "controversial") && timeFilter) {
+              options.time = timeFilter;
+            }
+            let submissions: Submission[] = [];
+            switch (sort) {
+              case "hot":
+                submissions = await sub.getHot(options);
+                break;
+              case "new":
+                submissions = await sub.getNew(options);
+                break;
+              case "top":
+                submissions = await sub.getTop(options);
+                break;
+              case "rising":
+                submissions = await sub.getRising(options);
+                break;
+              case "controversial":
+                submissions = await sub.getControversial(options);
+                break;
+            }
+            const rawPosts = submissions.map(mapSubmissionToRawPost);
+            return rawPosts.map(convertToRedditPost);
+          } catch (e2: any) {
+            const m2 = String(e2?.message || "");
+            if (/ratelimit/i.test(m2) || e2?.statusCode === 429) {
+              this.cooldownCurrent(60_000);
+              continue;
+            }
+            break;
+          }
+        }
+      }
       console.error(
         `❌ Strategy failed for ${subreddit} ${sort} ${timeFilter}:`,
         error
@@ -346,7 +405,7 @@ export class OptimizedRedditCollector {
    * Ultra-fast deduplication using Bloom filter + Redis set
    * Bloom filter gives O(1) probabilistic check, Redis confirms
    */
-  private async deduplicateUltraFasts(
+  private async deduplicateUltraFastsV3(
     posts: RedditPost[]
   ): Promise<RedditPost[]> {
     const unique: RedditPost[] = [];
@@ -383,7 +442,7 @@ export class OptimizedRedditCollector {
     return unique;
   }
 
-  private async deduplicateUltraFasts(
+  private async deduplicateUltraFastsV2(
     posts: RedditPost[]
   ): Promise<RedditPost[]> {
     const unique: RedditPost[] = [];
@@ -505,6 +564,103 @@ export class OptimizedRedditCollector {
       "all",
     ];
     return filters[Math.floor(Math.random() * filters.length)] as TimeFilters;
+  }
+
+  private loadCredentials() {
+    if (this.config.credentials && this.config.credentials.length > 0) {
+      return this.config.credentials;
+    }
+
+    const json = process.env.REDDIT_ACCOUNTS;
+
+    if (json) {
+      try {
+        const arr = JSON.parse(json);
+        if (Array.isArray(arr) && arr.length > 0) return arr;
+      } catch {}
+    }
+
+    return [
+      {
+        userAgent: config.reddit.userAgent,
+        clientId: config.reddit.clientId,
+        clientSecret: config.reddit.clientSecret,
+        username: config.reddit.userName,
+        password: config.reddit.password,
+      },
+    ];
+  }
+
+  /**
+   * Select the next available Reddit API client that is not on cooldown.
+   *
+   * The method implements round-robin selection with cooldown awareness:
+   * 1. Hydrates in-memory cooldown times from Redis (`cooldown:{index}` keys).
+   * 2. Iterates clients starting from the last-used index, returning the first
+   *    whose cooldown timestamp is in the past.
+   * 3. If every client is cooling down, the caller is blocked until the
+   *    earliest cooldown expires, then the next client in sequence is chosen.
+   *
+   * @returns A ready-to-use Snoowrap instance.
+   * @throws When no client exists at the computed index (should never occur).
+   */
+  private async nextClient(): Promise<Snoowrap> {
+    const totalClients = this.clients.length;
+
+    // Refresh local cooldown cache from Redis
+    for (let index = 0; index < totalClients; index++) {
+      const cooldownKey = `cooldown:${index}`;
+      const cooldownUntilStr = await this.redis.get?.(cooldownKey);
+      if (cooldownUntilStr) {
+        const cooldownUntil = parseInt(cooldownUntilStr, 10);
+        if (Number.isFinite(cooldownUntil)) {
+          this.clientCooldownUntil[index] = cooldownUntil;
+        }
+      }
+    }
+
+    // Find the first client that is not cooling down
+    for (let offset = 0; offset < totalClients; offset++) {
+      const candidateIndex = (this.clientIndex + offset) % totalClients;
+      if (Date.now() >= (this.clientCooldownUntil[candidateIndex] ?? 0)) {
+        this.clientIndex = candidateIndex;
+        const selectedClient = this.clients[candidateIndex];
+        if (!selectedClient) {
+          throw new Error(`No Reddit client at index ${candidateIndex}`);
+        }
+        this.client = selectedClient;
+        return this.client;
+      }
+    }
+
+    // All clients are cooling; wait for the earliest expiry
+    const shortestWaitMs = Math.min(
+      ...this.clientCooldownUntil.map((ts) => Math.max(0, ts - Date.now()))
+    );
+    if (shortestWaitMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, shortestWaitMs));
+    }
+
+    // Advance to the next client in round-robin order
+    this.clientIndex = (this.clientIndex + 1) % totalClients;
+    const selectedClient = this.clients[this.clientIndex];
+    if (!selectedClient) {
+      throw new Error(`No Reddit client at index ${this.clientIndex}`);
+    }
+    this.client = selectedClient;
+    return this.client;
+  }
+
+  private cooldownCurrent(ms: number) {
+    const idx = this.clientIndex;
+    const until = Date.now() + ms;
+    this.clientCooldownUntil[idx] = until;
+    const seconds = Math.ceil(ms / 1000);
+    const key = `cooldown:${idx}`;
+    if ((this.redis as any).set) {
+      (this.redis as any).set(key, String(until));
+      if ((this.redis as any).expire) (this.redis as any).expire(key, seconds);
+    }
   }
 }
 

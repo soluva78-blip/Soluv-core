@@ -9,7 +9,8 @@ const envSchema = Joi.object()
   .keys({
     NODE_ENV: Joi.string()
       .valid("development", "production", "staging", "test")
-      .required(),
+      .required()
+      .default("mongodb://localhost:27017/myapp"),
 
     MONGO_URI: Joi.string().required(),
 
@@ -21,15 +22,6 @@ const envSchema = Joi.object()
     REDDIT_CLIENT_SECRET: Joi.string().required(),
     REDDIT_USERNAME: Joi.string().required(),
     REDDIT_PASSWORD: Joi.string().required(),
-
-    REDDIT_SUBREDDITS: Joi.string().required(),
-    REDDIT_FETCH_LIMIT: Joi.number().default(25),
-    REDDIT_SORT: Joi.string().valid("hot", "top", "new").default("top"),
-    REDDIT_TIMEFRAME: Joi.string().valid("hour", "day", "week").default("day"),
-    PROBLEM_KEYWORDS: Joi.string().default("problem,issue,challenge"),
-    EXCLUDE_KEYWORDS: Joi.string().default("meme,spam"),
-    MIN_TITLE_LENGTH: Joi.number().default(10),
-    MAX_TITLE_LENGTH: Joi.number().default(150),
 
     CRON_EXPRESSION: Joi.string().default("*/1 * * * *"),
     TIMEZONE: Joi.string().default("UTC"),
@@ -65,17 +57,11 @@ export const config = Object.freeze({
 
   redditFetchConfig: {
     subreddits: validatedEnvVars.REDDIT_SUBREDDITS?.split(","),
-    fetchLimit: validatedEnvVars.REDDIT_FETCH_LIMIT,
-    sort: validatedEnvVars.REDDIT_SORT,
-    timeframe: validatedEnvVars.REDDIT_TIMEFRAME,
-    problemKeywords: validatedEnvVars.PROBLEM_KEYWORDS?.split(","),
-    excludeKeywords: validatedEnvVars.EXCLUDE_KEYWORDS?.split(","),
-    minTitleLength: validatedEnvVars.MIN_TITLE_LENGTH,
-    maxTitleLength: validatedEnvVars.MAX_TITLE_LENGTH,
   },
 
   queue: {
     name: "fetch-subreddit",
+    cronExpression: validatedEnvVars.CRON_EXPRESSION,
   },
 
   cache: {
