@@ -36,3 +36,9 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Gas Town runtime files
+.beads/
+.claude/
+.runtime/
+CLAUDE.md
