@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { addPostToQueue, getQueueStatus } from "@/queues/orchestrator.queue";
 import { OrchestratorService } from "@/services/orchestrator.service";
 import { ProcessPostRequest, RawPost } from "@/types";
+import clusteringRoutes from "@/routes/clustering.routes";
 import cors from "cors";
 import "dotenv/config";
 import express from "express";
@@ -21,6 +22,9 @@ app.use((req, res, next) => {
   logger.info(`${req.method} ${req.path} - ${req.ip}`);
   next();
 });
+
+// Routes
+app.use("/api/clustering", clusteringRoutes);
 
 // Health check
 app.get("/health", (req, res) => {
@@ -175,4 +179,8 @@ app.listen(port, () => {
   logger.info(`  POST /api/process-post - Queue post for processing`);
   logger.info(`  POST /api/process-post-sync - Process post synchronously`);
   logger.info(`  GET  /api/queue/status - Get queue status`);
+  logger.info(`  POST /api/clustering/cluster-posts - Cluster provided posts`);
+  logger.info(`  POST /api/clustering/cluster-from-db - Cluster posts from database`);
+  logger.info(`  GET  /api/clustering/clusters - Get all clusters`);
+  logger.info(`  GET  /api/clustering/clusters/:id/posts - Get cluster posts`);
 });

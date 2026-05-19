@@ -318,7 +318,8 @@ export class OrchestratorService {
       rawPost.id,
       semanticResult?.data?.embedding ?? [],
       categoryResult?.data?.categoryId!,
-      rawPost.title
+      rawPost.title,
+      rawPost.body
     );
 
     if (result.success) {

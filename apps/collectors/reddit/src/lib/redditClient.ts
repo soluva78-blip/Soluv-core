@@ -12,3 +12,4 @@ const redditClient = new Snoowrap({
 redditClient.config({ requestDelay: 50 });
 
 export { redditClient };
+

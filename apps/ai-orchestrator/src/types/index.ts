@@ -31,6 +31,7 @@ export type AuditLog = Database["public"]["Tables"]["audit_log"]["Row"];
 export type PostClassificationType =
   Database["public"]["Enums"]["post_classification"];
 export type SentimentLabelType = Database["public"]["Enums"]["sentiment_label"];
+export type PostType = Database["public"]["Enums"]["post_type"];
 
 export interface AgentContext {
   postId: string;
@@ -57,4 +58,46 @@ export interface AgentResult<T = any> {
   error?: string;
   tokensUsed?: number;
   latencyMs: number;
+}
+
+// Enhanced clustering interfaces
+export interface PostForClustering {
+  idx: number;
+  id: string;
+  source: string;
+  body: string;
+  keywords: string[];
+  category_id: number | null;
+  classification: string;
+  classification_confidence: number;
+  created_at?: string;
+  [key: string]: any;
+}
+
+export interface ClusterMetadata {
+  keywords: string[];
+  sources: { [source: string]: number };
+  aggregated_confidence: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface EnhancedCluster {
+  id: number;
+  name: string;
+  type: "problem" | "solution";
+  description: string;
+  centroid: string;
+  category_id: number | null;
+  member_count: number;
+  member_ids: string[];
+  representative_post_id: string;
+  metadata: ClusterMetadata;
+  created_at: string;
+  last_recomputed_at: string | null;
+}
+
+export interface ClusteringResult {
+  clusters: EnhancedCluster[];
+  unclustered: string[];
 }

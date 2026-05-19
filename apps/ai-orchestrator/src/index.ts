@@ -23,8 +23,10 @@ async function bootstrap() {
 async function main() {
   await bootstrap();
 
-  logger.info("Starting orchestrator in server mode...");
-  require("./server");
+  
+
+  // logger.info("Starting orchestrator in server mode...");
+  // require("./server");
 }
 
 // Handle uncaught exceptions

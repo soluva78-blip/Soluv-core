@@ -53,6 +53,10 @@ export class ClustersRepository {
     memberCount?: number;
     categoryId?: number;
     metadata?: any;
+    type?: "problem" | "solution";
+    description?: string;
+    representativePostId?: string;
+    memberIds?: string[];
   }): Promise<Cluster> {
     const insertData = {
       name: data.name || `Cluster_${Date.now()}`,
@@ -60,6 +64,10 @@ export class ClustersRepository {
       member_count: data.memberCount || 1,
       category_id: data.categoryId,
       metadata: data.metadata || {},
+      type: data.type || "problem",
+      description: data.description,
+      representative_post_id: data.representativePostId,
+      member_ids: data.memberIds || [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -171,5 +179,41 @@ export class ClustersRepository {
     }
 
     await this.updateCentroid(clusterId, avgEmbedding, members.length);
+  }
+
+  async addPostToCluster(clusterId: number, postId: string): Promise<void> {
+    // TODO: Run migration script first to add these functions to database
+    // For now, update member_ids array manually
+    const cluster = await this.findById(clusterId);
+    if (!cluster) return;
+
+    const currentMemberIds = cluster.member_ids || [];
+    if (!currentMemberIds.includes(postId)) {
+      const updatedMemberIds = [...currentMemberIds, postId];
+      await this.updateById(clusterId, { memberIds: updatedMemberIds });
+    }
+  }
+
+  async removePostFromCluster(clusterId: number, postId: string): Promise<void> {
+    // TODO: Run migration script first to add these functions to database
+    // For now, update member_ids array manually
+    const cluster = await this.findById(clusterId);
+    if (!cluster) return;
+
+    const currentMemberIds = cluster.member_ids || [];
+    const updatedMemberIds = currentMemberIds.filter((id: string) => id !== postId);
+    await this.updateById(clusterId, { memberIds: updatedMemberIds });
+  }
+
+  async updateClusterType(clusterId: number, type: "problem" | "solution"): Promise<void> {
+    await this.updateById(clusterId, { type });
+  }
+
+  async updateClusterDescription(clusterId: number, description: string): Promise<void> {
+    await this.updateById(clusterId, { description });
+  }
+
+  async updateRepresentativePost(clusterId: number, postId: string): Promise<void> {
+    await this.updateById(clusterId, { representativePostId: postId });
   }
 }

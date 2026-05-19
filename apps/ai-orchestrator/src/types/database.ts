@@ -93,33 +93,45 @@ export type Database = {
           category_id: number | null
           centroid: string
           created_at: string | null
+          description: string | null
           id: number
           last_recomputed_at: string | null
           member_count: number | null
+          member_ids: string[] | null
           metadata: Json | null
           name: string | null
+          representative_post_id: string | null
+          type: Database["public"]["Enums"]["post_type"] | null
           updated_at: string | null
         }
         Insert: {
           category_id?: number | null
           centroid: string
           created_at?: string | null
+          description?: string | null
           id?: number
           last_recomputed_at?: string | null
           member_count?: number | null
+          member_ids?: string[] | null
           metadata?: Json | null
           name?: string | null
+          representative_post_id?: string | null
+          type?: Database["public"]["Enums"]["post_type"] | null
           updated_at?: string | null
         }
         Update: {
           category_id?: number | null
           centroid?: string
           created_at?: string | null
+          description?: string | null
           id?: number
           last_recomputed_at?: string | null
           member_count?: number | null
+          member_ids?: string[] | null
           metadata?: Json | null
           name?: string | null
+          representative_post_id?: string | null
+          type?: Database["public"]["Enums"]["post_type"] | null
           updated_at?: string | null
         }
         Relationships: [
@@ -128,6 +140,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clusters_representative_post_id_fkey"
+            columns: ["representative_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
             referencedColumns: ["id"]
           },
         ]
@@ -331,6 +350,10 @@ export type Database = {
         Args: { p_post_id: string }
         Returns: boolean
       }
+      add_post_to_cluster_members: {
+        Args: { p_cluster_id: number; p_post_id: string }
+        Returns: undefined
+      }
       binary_quantize: {
         Args: { "": string } | { "": unknown }
         Returns: unknown
@@ -354,10 +377,14 @@ export type Database = {
           | { p_embedding: string; p_threshold: number }
         Returns: {
           centroid: string
+          description: string
           id: number
           member_count: number
+          member_ids: string[]
           name: string
+          representative_post_id: string
           similarity: number
+          type: Database["public"]["Enums"]["post_type"]
         }[]
       }
       halfvec_avg: {
@@ -419,6 +446,10 @@ export type Database = {
       l2_normalize: {
         Args: { "": string } | { "": unknown } | { "": unknown }
         Returns: unknown
+      }
+      remove_post_from_cluster_members: {
+        Args: { p_cluster_id: number; p_post_id: string }
+        Returns: undefined
       }
       sparsevec_out: {
         Args: { "": unknown }
