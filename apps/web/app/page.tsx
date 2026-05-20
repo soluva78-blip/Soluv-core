@@ -35,6 +35,9 @@ export default function Home() {
             Get started by editing <code>apps/web/app/page.tsx</code>
           </li>
           <li>Save and see your changes instantly.</li>
+          <li>
+            View the <a href="/dashboard">Real-Time Metrics Dashboard</a>
+          </li>
         </ol>
 
         <div className={styles.ctas}>
