@@ -2,6 +2,7 @@ import { BusinessIdeaAgent } from "@/agents/businessidea.agent";
 import { CategoryAgent } from "@/agents/category.agent";
 import { ClassificationAgent } from "@/agents/classification.agent";
 import { ClusterAgent } from "@/agents/cluster.agent";
+import { CompetitorAgent } from "@/agents/competitor.agent";
 import { SemanticAgent } from "@/agents/semantic.agent";
 import { SpamAgent } from "@/agents/spam.agent";
 import { DerivedProblem, ValidityAgent } from "@/agents/validity.agent2";
@@ -42,6 +43,7 @@ export interface OrchestrationState {
   businessIdeaResult?: AgentResult<{
     businessIdea: string;
   }>;
+  competitorResult?: AgentResult<any>;
   error?: string;
 }
 
@@ -58,6 +60,7 @@ export class OrchestratorService {
   private clusterAgent: ClusterAgent;
   private spamAgent: SpamAgent;
   private businessAgent: BusinessIdeaAgent;
+  private competitorAgent: CompetitorAgent;
 
   constructor(supabase: SupabaseClient) {
     this.postsRepo = new PostsRepository(supabase);
@@ -72,6 +75,7 @@ export class OrchestratorService {
     this.clusterAgent = new ClusterAgent(this.clustersRepo);
     this.spamAgent = new SpamAgent();
     this.businessAgent = new BusinessIdeaAgent();
+    this.competitorAgent = new CompetitorAgent();
   }
 
   async processPost(rawPost: RawPost): Promise<void> {
@@ -172,15 +176,19 @@ export class OrchestratorService {
     const businessIdeaResult = await this.businessIdeaAnalysis(state);
     state = { ...state, ...businessIdeaResult };
 
-    // Step 6: Category Assignment
+    // Step 6: Competitor Analysis
+    const competitorResult = await this.competitorAnalysis(state);
+    state = { ...state, ...competitorResult };
+
+    // Step 7: Category Assignment
     const categoryResult = await this.categoryAssignment(state);
     state = { ...state, ...categoryResult };
 
-    // Step 7: Cluster Assignment
+    // Step 8: Cluster Assignment
     const clusterResult = await this.clusterAssignment(state);
     state = { ...state, ...clusterResult };
 
-    // Step 8: Record Mention
+    // Step 9: Record Mention
     await this.recordMention(state);
 
     console.log(
@@ -289,6 +297,27 @@ export class OrchestratorService {
     return { businessIdeaResult: result };
   }
 
+  private async competitorAnalysis(
+    state: OrchestrationState
+  ): Promise<Partial<OrchestrationState>> {
+    const { rawPost, businessIdeaResult } = state;
+    if (!rawPost) throw new Error("Raw post not provided");
+
+    const result = await this.competitorAgent.analyzeCompetitors(
+      rawPost.title,
+      rawPost.body,
+      businessIdeaResult?.data?.businessIdea
+    );
+
+    if (result.success && result.data) {
+      await this.postsRepo.updateById(rawPost.id, {
+        competitor_analysis: result.data,
+        updated_at: new Date().toISOString(),
+      });
+    }
+    return { competitorResult: result };
+  }
+
   private async categoryAssignment(
     state: OrchestrationState
   ): Promise<Partial<OrchestrationState>> {
@@ -392,6 +421,9 @@ export class OrchestratorService {
         const businessIdeaResult =
           await this.businessIdeaAnalysis(derivedState);
         derivedState = { ...derivedState, ...businessIdeaResult };
+
+        const competitorResult = await this.competitorAnalysis(derivedState);
+        derivedState = { ...derivedState, ...competitorResult };
 
         const categoryResult = await this.categoryAssignment(derivedState);
         derivedState = { ...derivedState, ...categoryResult };
