@@ -1,13 +1,16 @@
 import { Trend } from "@/types";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { MentionsRepository } from "../repositories/mentions.repository.js";
+import { TrendForecastingService } from "./trends/trend-forecasting.service.js";
 
 export class TrendsService {
   private mentionsRepo: MentionsRepository;
   private trendsTable = "trends";
+  private forecastingService: TrendForecastingService;
 
   constructor(private supabase: SupabaseClient) {
     this.mentionsRepo = new MentionsRepository(supabase);
+    this.forecastingService = new TrendForecastingService(supabase);
   }
 
   /** Entry point for orchestrator to compute trends */
@@ -200,5 +203,40 @@ export class TrendsService {
 
     if (error) throw error;
     return data as Trend[];
+  }
+
+  /** Get trending clusters with forecasts */
+  async getTrendingWithForecasts(limit: number = 10): Promise<Array<{
+    trend: Trend;
+    forecast: any;
+  }>> {
+    const topTrends = await this.getTopTrending(limit);
+    const results = [];
+
+    for (const trend of topTrends) {
+      if (!trend.cluster_id) continue;
+
+      const forecast = await this.forecastingService.forecastTrend(trend.cluster_id, 168);
+      results.push({ trend, forecast });
+    }
+
+    return results;
+  }
+
+  /** Detect anomalies in trending clusters */
+  async detectTrendAnomalies(): Promise<Map<number, any>> {
+    const topTrends = await this.getTopTrending(50);
+    const anomalies = new Map<number, any>();
+
+    for (const trend of topTrends) {
+      if (!trend.cluster_id) continue;
+
+      const anomalyResult = await this.forecastingService.detectAnomalies(trend.cluster_id);
+      if (anomalyResult.anomalies.length > 0) {
+        anomalies.set(trend.cluster_id, anomalyResult);
+      }
+    }
+
+    return anomalies;
   }
 }
